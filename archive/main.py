@@ -1,31 +1,34 @@
 import networkx as nx
-import torch
 from torch import nn
 import torch.utils.data
 
 import external.dagma.utils
-from utils import set_random_seed_all, get_leading_left_and_right_eigenvectors
-from autoencoder import AutoEncoder
+from utils import set_random_seed_all
+from archive.autoencoder import AutoEncoder
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 # torch.set_default_dtype(torch.float32)
 
 set_random_seed_all(0)
 
-n, d, _, graph_type, sem_type = 1000, 10, -1, "ER", "mlp"
-s0 = 4*d
+n, d, _, graph_type, sem_type = 1000, 20, -1, "ER", "mlp"
+s0 = 4 * d
 B_true = external.dagma.utils.simulate_dag(d, s0, graph_type)
 X = external.dagma.utils.simulate_nonlinear_sem(B_true, n, sem_type)
+
+# X, B_true = external.dagma.utils.simulate_chain(n, d)
 X = torch.FloatTensor(X)
 
 model = AutoEncoder(d, 32, [], [], nn.ReLU(), adjacency_p=1)
-learning_rate = 1e-3
+print(model)
+learning_rate = 2e-4#1e-3
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-data_loader = torch.utils.data.DataLoader(X, batch_size=128, shuffle=True, drop_last=True)
-alpha = 1.0
-beta = 1.0
+data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)
+alpha = 0.02
+beta = 0.005
 initial_gamma = 1.0
 target_gamma = 200_000
 
@@ -33,10 +36,10 @@ target_gamma = 200_000
 target_gamma = 50
 gamma = initial_gamma
 
-n_subepochs = 3000
+n_subepochs = 15_000
 gammas = []
 # for a in [1, 10, 20, 50, 10, 20, 50]:
-for a in [1, 5, 20, 10, 20, 10, 20]:
+for a in [10, 100, 1000]:
     gammas += [a] * n_subepochs
 
 n_epochs = len(gammas)
@@ -75,7 +78,8 @@ for epoch in range(n_epochs):
     B_pred = model.get_adjacency_matrix("normal").detach().numpy()
     score = (B_true != (B_pred > 0.3)).sum()
     scores.append(score)
-    if epoch % 100 == 0:
+    # print(f"Epoch {epoch}: loss={epoch_loss:.2f}, score={score}, gamma={gamma:.2f}")
+    if epoch % 1000 == 0:
         # print(
         #     f"Epoch {epoch}: "
         #     f"rec-loss={model.reconstruction_loss(data_loader.dataset):.2f}, "
@@ -85,7 +89,8 @@ for epoch in range(n_epochs):
 
         # for each node: list its parents in order of the predicted edge weights
         # if the parent is correct, print it in green, otherwise in red
-        print("Epoch", epoch, "---", "gamma =", gamma)
+        print(f"Epoch {epoch}: loss={epoch_loss:.2f}, score={score}, gamma={gamma:.2f}")
+        # continue
         for i in range(d):
             parents_weights = B_pred[:, i]
             parents = sorted(range(d), key=lambda j: parents_weights[j], reverse=True)
@@ -94,16 +99,25 @@ for epoch in range(n_epochs):
                 if parents_weights[parents[0]] < t:
                     parents_str.append("|")
             for idx, j in enumerate(parents):
+                # print the parent in orange if it is actually a child of the node
                 if B_true[j, i]:
                     parents_str.append(f"\033[92m{j}\033[0m")
+                elif B_true[i, j]:
+                    parents_str.append(f"\033[93m{j}\033[0m")
                 else:
                     parents_str.append(f"\033[91m{j}\033[0m")
                 # add | if the parent weight is greater than one of the thresholds
                 # and the next parent weight is less than the threshold
                 for t in thresholds:
-                    conditions = [(idx < d - 1 and parents_weights[parents[idx]] > t > parents_weights[parents[idx + 1]]),
-                                  (idx == d - 1 and parents_weights[parents[idx]] > t)
-                                ]
+                    conditions = [
+                        (
+                            idx < d - 1
+                            and parents_weights[parents[idx]]
+                            > t
+                            > parents_weights[parents[idx + 1]]
+                        ),
+                        (idx == d - 1 and parents_weights[parents[idx]] > t),
+                    ]
                     if any(conditions):
                         parents_str.append("|")
             print(f"Node {i}: " + " ".join(parents_str))
