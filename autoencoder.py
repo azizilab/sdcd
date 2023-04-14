@@ -121,10 +121,10 @@ class AutoEncoder(nn.Module):
         if n_observations is not None:
             reconstruction_loss = reconstruction_loss / x.shape[0]
             dag_loss = dag_loss
-            # l1_reg = l1_reg / n_observations
-            # l2_reg = l2_reg / n_observations
-            l1_reg = l1_reg * 0.02
-            l2_reg = l2_reg * 0.005
+            l1_reg = l1_reg / n_observations
+            l2_reg = l2_reg / n_observations
+            # l1_reg = l1_reg
+            # l2_reg = l2_reg
 
         return reconstruction_loss + gamma * dag_loss + alpha * l1_reg + beta * l2_reg
         # return dag_loss + 1 / gamma * (reconstruction_loss + alpha * l1_reg + beta * self.l2_reg())
