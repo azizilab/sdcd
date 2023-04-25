@@ -1,8 +1,11 @@
 import random
+from tqdm import tqdm
 
 import networkx as nx
 import numpy as np
 import torch
+import scipy.stats
+import pandas as pd
 
 
 def set_random_seed_all(seed=0):
@@ -10,6 +13,58 @@ def set_random_seed_all(seed=0):
     np.random.seed(seed)
     torch.manual_seed(seed)
     # torch.cuda.manual_seed(seed)
+
+
+def compute_p_vals(X_df):
+    """Computes p-values of a KS test for each candidate edge of a causal graph given interventional data.
+
+    Requires a input dataframe containing the interventional data and acolumn called `perturbation_label`
+    containing labels for which column is perturbed. `obs` is reserved for the observational subset.
+
+    Returns a dataframe of edges with associated p-values and adjusted p-values (BH corrected).
+    """
+    edge_rows = []
+    d = X_df.shape[1] - 1
+    observational_X_df = X_df[X_df.perturbation_label == "obs"]
+    for target_gene_idx in tqdm(range(d)):
+        for candidate_parent_idx in range(d):
+            if target_gene_idx == candidate_parent_idx:
+                continue
+            cand_int_subset_df = X_df[X_df.perturbation_label == candidate_parent_idx]
+            _, pval = scipy.stats.kstest(
+                observational_X_df.loc[:, target_gene_idx].to_numpy(),
+                cand_int_subset_df.loc[:, target_gene_idx].to_numpy(),
+            )
+            edge_rows.append((candidate_parent_idx, target_gene_idx, pval))
+    edges_df = pd.DataFrame(
+        edge_rows, columns=["candidate_parent_idx", "target_gene_idx", "pval"]
+    )
+
+    # Compute BH corrected pvals
+    edges_df = edges_df.sort_values("pval")
+    n_pvals = edges_df.shape[0]
+    edges_df["pval_rank"] = np.arange(1, edges_df.shape[0] + 1)
+    edges_df["pval_adj"] = edges_df["pval"] * n_pvals / edges_df["pval_rank"]
+
+    return edges_df
+
+
+def ks_test_screen(X_df, sig=0.10, verbose=False):
+    """Runs a pre-screen on candidate edges using the KS test metric.
+
+    Returns a binary mask indicating which edges to consider.
+    """
+    edges_df = compute_p_vals(X_df)
+    valid_edges_df = edges_df[edges_df.pval_adj < sig]
+    if verbose:
+        print(
+            f"Fraction edges valid under significance level {sig}: {len(valid_edges_df) / len(edges_df):.2f}"
+        )
+    G = X_df.shape[1] - 1
+    mask = np.zeros((G, G), dtype=int)
+    for row in valid_edges_df.iterrows():
+        mask[int(row[1]["candidate_parent_idx"]), int(row[1]["target_gene_idx"])] = 1
+    return mask
 
 
 def get_leading_left_and_right_eigenvectors(A):
@@ -55,8 +110,10 @@ def print_graph_from_weights(d, B_pred, B_true, thresholds):
             for t in thresholds:
                 conditions = [
                     (
-                            idx < d - 1
-                            and parents_weights[parents[idx]] > t > parents_weights[parents[idx + 1]]
+                        idx < d - 1
+                        and parents_weights[parents[idx]]
+                        > t
+                        > parents_weights[parents[idx + 1]]
                     ),
                     (idx == d - 1 and parents_weights[parents[idx]] > t),
                 ]

@@ -3,6 +3,7 @@ import random
 import igraph as ig
 import numpy as np
 from scipy.special import expit as sigmoid
+import pandas as pd
 
 
 def simulate_chain(n, d):
@@ -307,6 +308,28 @@ def simulate_nonlinear_sem_knockdown(
             X[:, j] *= 1 - knockdown_eff
         new_param_dict[j] = params
     return X, new_param_dict
+
+
+def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0):
+    assert knockdown_eff <= 1.0 and knockdown_eff >= 0.0
+    d = B.shape[0]
+    X_subsets = []
+    perturbation_labels = []
+
+    X, param_dict = simulate_nonlinear_sem(B, n, sem_type)
+    X_subsets.append(X)
+    perturbation_labels.append("obs")
+
+    for i in range(d):
+        X_int, _ = simulate_nonlinear_sem_knockdown(
+            B, n, sem_type, param_dict, i, knockdown_eff=1.0
+        )
+        X_subsets.append(X_int)
+        perturbation_labels.append(i)
+    perturbation_label_col = pd.Series(sum([n * [p] for p in perturbation_labels], []))
+    X_df = pd.DataFrame(np.vstack(X_subsets), columns=np.arange(d))
+    X_df["perturbation_label"] = perturbation_label_col.astype("category")
+    return X_df, param_dict
 
 
 def count_accuracy(B_true, B_est):
