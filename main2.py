@@ -25,12 +25,14 @@ X_df, param_dict = simulation.generate_full_interventional_set(
 )
 X = torch.FloatTensor(X_df.to_numpy()[:, :-1].astype(float))
 
-prescreen = True
+prescreen = False
 sig = 0.2
 mask = None
 # Prescreen
 if prescreen:
     mask = ks_test_screen(X_df, sig=sig, verbose=True)
+
+use_interventions = True
 
 # Begin training
 model = AutoEncoderLayers(
@@ -39,7 +41,15 @@ model = AutoEncoderLayers(
 learning_rate = 2e-4
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)
+if use_interventions:
+    # ensure interventions are ints mapping to index of column
+    column_mapping = {c: i for i, c in enumerate(X_df.columns[:-1])}
+    column_mapping["obs"] = -1
+    interventions = torch.LongTensor(X_df["perturbation_label"].map(column_mapping)).reshape((-1, 1))
+    dataset = torch.utils.data.TensorDataset(X, interventions)
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=n, shuffle=True, drop_last=True)
+else:
+    data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)
 
 n_epochs = 45_000
 gammas = []
@@ -109,6 +119,7 @@ wandb.init(
         "knockdown_eff": knockdown_eff,
         "gamma_update_flavor": gamma_update_flavor,
         "gamma_update_config": gamma_update_config,
+        "use_interventions": use_interventions,
     },
 )
 
@@ -141,8 +152,13 @@ for epoch in range(n_epochs):
 
     epoch_loss = 0
     for batch in data_loader:
+        if use_interventions:
+            X_batch, interventions_batch = batch
+        else:
+            X_batch = batch
+            interventions_batch = None
         optimizer.zero_grad()
-        loss = model.loss(batch, alpha, beta, gamma, n_observations)
+        loss = model.loss(X_batch, alpha, beta, gamma, n_observations, interventions = interventions_batch)
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
