@@ -53,15 +53,14 @@ else:
 
 n_epochs = 45_000
 gammas = []
-gamma_choices = [10, 100, 1000, 1000, 1000]
+gamma_choices = [10, 100, 1000]
 for a in gamma_choices:
     gammas += [a] * int(n_epochs // len(gamma_choices))
 if len(gammas) != n_epochs:
     gammas += [gamma_choices[-1]] * int(n_epochs % gamma_choices)
 
-alpha_max = 2e-2
 alpha_update_flavor = "fixed"
-alpha_choices = [0, 0, 0, 1e-3, 1e-2]
+alpha_choices = [2e-2]
 if alpha_update_flavor == "fixed":
     alphas = []
     for a in alpha_choices:

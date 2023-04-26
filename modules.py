@@ -94,26 +94,15 @@ class DispatcherLayer(nn.Module):
         self.bias = nn.Parameter(torch.zeros(out_dim, hidden_dim))
         self.reset_parameters()
 
-    def forward(self, x, interventions=None):
+    def forward(self, x):
         """
         Args:
             x (torch.Tensor): input tensor of shape (batch_size, in_dim)
-            interventions (torch.IntTensor): input tensor of shape (batch_size, 1) where obs are set to -1
         Returns:
             torch.Tensor: output tensor of shape (batch_size, out_dim, hidden_dim)
         """
         weight = torch.einsum("ioh, io -> ioh", self.weight, self.mask)
-
-        if interventions is not None:
-            interventions[torch.where(interventions == -1)] = x.shape[1]
-            interventions_oh = nn.functional.one_hot(interventions.squeeze(), num_classes = x.shape[1] + 1)[:, :-1] # cutoff obs
-            mask_interventions_oh = 1 - interventions_oh
-            masked_weight = torch.einsum("ioh, ni -> nioh", weight, mask_interventions_oh)
-            x = torch.einsum("ni, nioh -> noh", x, masked_weight)
-        else:
-            x = torch.einsum("ni, ioh -> noh", x, weight)
-
-        x += self.bias
+        x = torch.einsum("ni, ioh -> noh", x, weight) + self.bias
         return x
 
     @torch.no_grad()
@@ -176,7 +165,7 @@ class AutoEncoderLayers(nn.Module):
 
         self.reset_parameters()
 
-    def forward(self, x, interventions=None):
+    def forward(self, x):
         """
         Args:
             x (torch.Tensor): input tensor of shape (batch_size, in_dim)
@@ -184,10 +173,7 @@ class AutoEncoderLayers(nn.Module):
             torch.Tensor: output tensor of shape (batch_size, out_dim, hidden_dim[-1])
         """
         for i, layer in enumerate(self.layers):
-            if i == 0:
-                x = layer(x, interventions=interventions)
-            else:
-                x = layer(x)
+            x = layer(x)
             if i < len(self.layers) - 1:
                 x = self.activation(x)
 
@@ -202,8 +188,14 @@ class AutoEncoderLayers(nn.Module):
             layer.reset_parameters()
 
     def reconstruction_loss(self, x, interventions = None):
-        x_mean = self(x, interventions = interventions).squeeze(2)
-        nll = ((x_mean - x) ** 2).sum()
+        x_mean = self(x).squeeze(2)
+        if interventions is not None:
+            interventions[torch.where(interventions == -1)] = x.shape[1]
+            interventions_oh = nn.functional.one_hot(interventions.squeeze(), num_classes = x.shape[1] + 1)[:, :-1] # cutoff obs
+            mask_interventions_oh = 1 - interventions_oh
+            nll = (mask_interventions_oh * (x_mean - x) ** 2).sum()
+        else:
+            nll = ((x_mean - x) ** 2).sum()
         # we normalize by the number of samples (but ideally we shouldn't, as it mess up
         # with the L1 and L2 regularization scales)
         nll /= x.shape[0]
