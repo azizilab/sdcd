@@ -25,7 +25,7 @@ X_df, param_dict = simulation.generate_full_interventional_set(
 )
 X = torch.FloatTensor(X_df.to_numpy()[:, :-1].astype(float))
 
-prescreen = False
+prescreen = True
 sig = 0.2
 mask = None
 # Prescreen
@@ -36,23 +36,28 @@ if prescreen:
 model = AutoEncoderLayers(
     d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0, mask=mask
 )
-learning_rate = 2e-5
+learning_rate = 2e-4
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)
 
-n_epochs = 55_000
+n_epochs = 45_000
 gammas = []
-gamma_choices = [10, 100, 1000, 1000]
+gamma_choices = [10, 100, 1000, 1000, 1000]
 for a in gamma_choices:
     gammas += [a] * int(n_epochs // len(gamma_choices))
 if len(gammas) != n_epochs:
     gammas += [gamma_choices[-1]] * int(n_epochs % gamma_choices)
 
-alpha_max = 1e-2
-alpha_update_flavor = "linear"
+alpha_max = 2e-2
+alpha_update_flavor = "fixed"
+alpha_choices = [0, 0, 0, 1e-3, 1e-2]
 if alpha_update_flavor == "fixed":
-    alphas = [alpha_max] * n_epochs
+    alphas = []
+    for a in alpha_choices:
+        alphas += [a] * int(n_epochs // len(alpha_choices))
+    if len(gammas) != n_epochs:
+        alphas += [alpha_choices[-1]] * int(n_epochs % alpha_choices)
 elif alpha_update_flavor == "linear":
     alphas = np.linspace(0, alpha_max, num=n_epochs).tolist()
 
@@ -63,7 +68,7 @@ gamma_update_flavor = "fixed"
 gamma_update_interval_epochs = 10
 gamma_update_config = None
 if gamma_update_flavor == "fixed":
-    gamma_update_config = {"gammas": gammas}
+    gamma_update_config = {"gammas": gamma_choices}
 elif gamma_update_flavor == "annealing":
     gamma_update_patience = 100
     gamma_update_delta = 0
@@ -98,7 +103,7 @@ wandb.init(
         "seed": seed,
         "prescreen": prescreen,
         "sig": sig,
-        "alpha": alpha_max,
+        "alpha": alpha_choices,
         "alpha_schedule": alpha_update_flavor,
         "beta": beta,
         "knockdown_eff": knockdown_eff,
@@ -149,8 +154,8 @@ for epoch in range(n_epochs):
             if _gamma_update_prev_adj is not None:
                 # Check if the adjacency matrix has changed
                 n_edges_change = (B_pred_thresh != _gamma_update_prev_adj).sum()
-                wandb.log({"n_edges_change": n_edges_change, "epoch": epoch})
                 is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > 0.1))
+                wandb.log({"n_edges_change": n_edges_change, "is_dag": is_dag, "epoch": epoch})
                 if is_dag and n_edges_change <= gamma_update_delta:
                     # Decrease patience if not changing much
                     _gamma_update_patience_counter -= 1
@@ -191,13 +196,20 @@ for epoch in range(n_epochs):
     if epoch % 1000 == 0:
         B_pred = model.get_adjacency_matrix().detach().numpy()
         score = (B_true != (B_pred > 0.3)).sum()
+        recall = (B_true.astype(bool) & (B_pred > 0.3)).sum() / B_true.sum()
+        precision = (B_true.astype(bool) & (B_pred > 0.3)).sum() / (B_pred > 0.3).sum()
+        n_edges_pred = (B_pred > 0.3).sum()
         scores.append(score)
         wandb.log(
             {
                 "epoch": epoch,
                 "epoch_loss": epoch_loss,
                 "score": score,
+                "precision": precision,
+                "recall": recall,
+                "n_edges_pred": n_edges_pred,
                 "gamma": gamma,
+                "alpha": alpha,
             }
         )
         epoch_loss /= len(data_loader)
