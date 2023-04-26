@@ -1,10 +1,13 @@
 import math
+import pdb
 
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch.utils.data
 from torch import nn
 import wandb
+import networkx as nx
 
 import simulation
 from modules import AutoEncoderLayers
@@ -13,8 +16,8 @@ from utils import set_random_seed_all, print_graph_from_weights, ks_test_screen
 seed = 0
 set_random_seed_all(seed)
 
-n, d = 50, 10
-n_edges = 4 * d
+n, d = 50, 20
+n_edges = 5 * d
 knockdown_eff = 1.0
 B_true = simulation.simulate_dag(d, n_edges, "ER")
 X_df, param_dict = simulation.generate_full_interventional_set(
@@ -22,42 +25,53 @@ X_df, param_dict = simulation.generate_full_interventional_set(
 )
 X = torch.FloatTensor(X_df.to_numpy()[:, :-1].astype(float))
 
-prescreen = True
-sig = 0.1
+prescreen = False
+sig = 0.2
 mask = None
 # Prescreen
 if prescreen:
-    mask = ks_test_screen(X_df, verbose=True)
+    mask = ks_test_screen(X_df, sig=sig, verbose=True)
 
 # Begin training
 model = AutoEncoderLayers(
     d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0, mask=mask
 )
-learning_rate = 2e-4  # 1e-3
+learning_rate = 2e-5
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)
 
-n_subepochs = 15_000
+n_epochs = 55_000
 gammas = []
-for a in [10, 100, 1000]:
-    gammas += [a] * n_subepochs
+gamma_choices = [10, 100, 1000, 1000]
+for a in gamma_choices:
+    gammas += [a] * int(n_epochs // len(gamma_choices))
+if len(gammas) != n_epochs:
+    gammas += [gamma_choices[-1]] * int(n_epochs % gamma_choices)
 
-n_epochs = len(gammas)
-alpha = 0.02
+alpha_max = 1e-2
+alpha_update_flavor = "linear"
+if alpha_update_flavor == "fixed":
+    alphas = [alpha_max] * n_epochs
+elif alpha_update_flavor == "linear":
+    alphas = np.linspace(0, alpha_max, num=n_epochs).tolist()
+
 beta = 0.005
 
 # Hyperparam tune config
 gamma_update_flavor = "fixed"
 gamma_update_interval_epochs = 10
 gamma_update_config = None
-if gamma_update_flavor == "annealing":
-    gamma_update_patience = 3
-    gamma_update_delta = 3
-    gamma_update_step = 10
+if gamma_update_flavor == "fixed":
+    gamma_update_config = {"gammas": gammas}
+elif gamma_update_flavor == "annealing":
+    gamma_update_patience = 100
+    gamma_update_delta = 0
+    gamma_update_step = 20
+    gamma_update_cycle_step = 100
     gamma_update_floor = 10
-    gamma_update_ceil = 100
-    gamma_update_max_cycle_epochs = 2000
+    gamma_update_ceil = 1000
+    gamma_update_max_cycle_epochs = 20000
     gamma_update_config = {
         "interval": gamma_update_interval_epochs,
         "patience": gamma_update_patience,
@@ -69,8 +83,8 @@ if gamma_update_flavor == "annealing":
     }
 
     _gamma_update_prev_adj = None
-    _gamma_update_floor = 10
-    _gamma_update_ceil = 100
+    _gamma_update_floor = gamma_update_floor
+    _gamma_update_ceil = gamma_update_ceil
     _gamma_update_cycle_counter = 0
     _gamma_update_patience_counter = gamma_update_patience
 
@@ -80,13 +94,16 @@ wandb.init(
     config={
         "n": n,
         "d": d,
+        "learning_rate": learning_rate,
         "seed": seed,
         "prescreen": prescreen,
         "sig": sig,
-        "alpha": alpha,
+        "alpha": alpha_max,
+        "alpha_schedule": alpha_update_flavor,
         "beta": beta,
-        "gammas": gammas,
         "knockdown_eff": knockdown_eff,
+        "gamma_update_flavor": gamma_update_flavor,
+        "gamma_update_config": gamma_update_config,
     },
 )
 
@@ -98,10 +115,18 @@ if gamma_update_flavor == "annealing":
     gamma = gamma_update_floor
 
 for epoch in range(n_epochs):
+    alpha = alphas[epoch]
+
     if gamma_update_flavor == "fixed":
         gamma = gammas[epoch]
     elif gamma_update_flavor == "annealing":
-        cycle_frac = _gamma_update_cycle_counter / gamma_update_max_cycle_epochs
+        _gamma_update_cycle_counter += 1
+        cycle_frac = min(
+            _gamma_update_cycle_counter / gamma_update_max_cycle_epochs
+            if (n_epochs - epoch) >= gamma_update_max_cycle_epochs
+            else _gamma_update_cycle_counter / gamma_update_max_cycle_epochs,
+            1,
+        )
         cos_frac = (
             math.cos((cycle_frac + 1) * math.pi) + 1
         ) / 2  # cos(x) from pi to 2pi remapped to [0,1] x [0,1]
@@ -117,28 +142,49 @@ for epoch in range(n_epochs):
         optimizer.step()
         epoch_loss += loss.item()
 
-    if epoch % gamma_update_interval_epochs == 0 & epoch > 0:
+    if epoch % gamma_update_interval_epochs == 0 and epoch > 0:
         if gamma_update_flavor == "annealing":
-            _gamma_update_cycle_counter += gamma_update_interval_epochs
-            B_pred = model.get_adjacency_matrix().detach().numpy() > 0.3
+            B_pred = model.get_adjacency_matrix().detach().numpy()
+            B_pred_thresh = B_pred > 0.3
             if _gamma_update_prev_adj is not None:
-                n_edges_change = (B_pred != _gamma_update_prev_adj).sum()
+                # Check if the adjacency matrix has changed
+                n_edges_change = (B_pred_thresh != _gamma_update_prev_adj).sum()
                 wandb.log({"n_edges_change": n_edges_change, "epoch": epoch})
-                if n_edges_change <= gamma_update_delta:
+                is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > 0.1))
+                if is_dag and n_edges_change <= gamma_update_delta:
+                    # Decrease patience if not changing much
                     _gamma_update_patience_counter -= 1
                 else:
+                    # Reset patience otherwise
                     _gamma_update_patience_counter = gamma_update_patience
 
-            _gamma_update_prev_adj = B_pred
+            _gamma_update_prev_adj = B_pred_thresh
 
-            if _gamma_update_patience_counter == 0:
+            if (n_epochs - epoch) < gamma_update_max_cycle_epochs:
+                # If within last cycle, just finish up last cycle without logic
+                pass
+            elif _gamma_update_patience_counter == 0:
+                print(f"Lost patience, resetting gamma to {_gamma_update_floor}")
+                # If lost patience, reset gamma and reset everything
+                _gamma_update_floor = max(
+                    _gamma_update_floor - gamma_update_cycle_step, 0
+                )
+                _gamma_update_ceil = max(
+                    _gamma_update_ceil - gamma_update_cycle_step,
+                    _gamma_update_floor + gamma_update_step,
+                )
+
                 gamma = _gamma_update_floor
+
                 _gamma_update_patience_counter = gamma_update_patience
-                _gamma_update_floor = gamma_update_floor + gamma_update_step
                 _gamma_update_cycle_counter = 0
             elif _gamma_update_cycle_counter >= gamma_update_max_cycle_epochs:
-                gamma = _gamma_update_floor
+                print(f"Hit max cycle, resetting gamma to {_gamma_update_floor}")
                 _gamma_update_ceil += gamma_update_step
+                _gamma_update_floor += gamma_update_cycle_step
+
+                gamma = _gamma_update_floor
+
                 _gamma_update_cycle_counter = 0
                 _gamma_update_patience_counter = gamma_update_patience
 
