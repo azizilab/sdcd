@@ -90,9 +90,15 @@ class DispatcherLayer(nn.Module):
         self.mask = torch.ones((in_dim, out_dim), requires_grad=False)
         if mask is not None:
             self.mask = torch.tensor(mask, requires_grad=False)
-        self.weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
+        self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
         self.bias = nn.Parameter(torch.zeros(out_dim, hidden_dim))
         self.reset_parameters()
+
+    @property
+    def weight(self):
+        if self.mask is not None:
+            return self._weight * self.mask[:, :, None]
+        return self._weight
 
     def forward(self, x):
         """
@@ -101,8 +107,7 @@ class DispatcherLayer(nn.Module):
         Returns:
             torch.Tensor: output tensor of shape (batch_size, out_dim, hidden_dim)
         """
-        weight = torch.einsum("ioh, io -> ioh", self.weight, self.mask)
-        x = torch.einsum("ni, ioh -> noh", x, weight) + self.bias
+        x = torch.einsum("ni, ioh -> noh", x, self.weight) + self.bias
         return x
 
     @torch.no_grad()
@@ -112,10 +117,7 @@ class DispatcherLayer(nn.Module):
         nn.init.uniform_(self.bias, -bound, bound)
 
     def get_adjacency_matrix(self):
-        adj_matrix = torch.linalg.vector_norm(self.weight, dim=2, ord=self.adjacency_p)
-        if self.mask is not None:
-            adj_matrix = adj_matrix * self.mask
-        return adj_matrix
+        return torch.linalg.vector_norm(self.weight, dim=2, ord=self.adjacency_p)
 
     def __repr__(self):
         return f"DispatcherLayer(in_dim={self.in_dim}, out_dim={self.out_dim}, hidden_dim={self.hidden_dim}, adjacency_p={self.adjacency_p})"
