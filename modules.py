@@ -1,8 +1,11 @@
 """
 Contains helper modules used in the models.
 """
+import scipy.sparse
 import torch
 import torch.nn as nn
+
+import numpy as np
 
 
 class DenseLayers(nn.Module):
@@ -136,7 +139,8 @@ class AutoEncoderLayers(nn.Module):
         )
         self.identity = torch.eye(self.in_dim)
 
-        self.power_grad = PowerIterationGradient(self, self.in_dim, alpha=0.85)
+        # self.power_grad = PowerIterationGradient(self)
+        self.power_grad = SCCPowerIteration(self, 1000)
 
         # if layers are shared, use regular dense layers
         # else use parallel layers
@@ -194,10 +198,10 @@ class AutoEncoderLayers(nn.Module):
         return h
 
     def dag_reg_power_grad(self):
-        grad, A = self.power_grad.power_grad()
-        with torch.no_grad():
-            grad = grad - A * (grad * A).sum() / ((A**2).sum() + 1e-6) / 2
-        grad = grad + torch.eye(self.in_dim)
+        grad, A = self.power_grad.compute_gradient()
+        # with torch.no_grad():
+        #     grad = grad - A * (grad * A).sum() / ((A**2).sum() + 1e-6) / 2
+        # grad = grad + torch.eye(self.in_dim)
         h_val = (grad.detach() * A).sum()
         return h_val
 
@@ -205,24 +209,108 @@ class AutoEncoderLayers(nn.Module):
         nll = self.reconstruction_loss(x)
         l1_reg = alpha * self.l1_reg_dispatcher()  # * n_obs_norm
         l2_reg = beta * self.l2_reg_all_weights()  # * n_obs_norm
-        mu = 1 / gamma
-        dag_reg = self.dag_reg()
-        obj = (nll + l1_reg + l2_reg) + gamma * dag_reg
+        # mu = 1 / gamma
+        # dag_reg = self.dag_reg()
+        dag_reg = self.dag_reg_power_grad()
+        obj = nll + l1_reg + l2_reg + gamma * dag_reg
         # if np.random.rand() < 0.01:
-        #     print(nll.item(), l1_reg.item(), l2_reg.item(), dag_reg.item())
+        #     print(
+        #         f"nll: {nll.item():.3f}, l1: {l1_reg.item():.3f}, l2: {l2_reg.item():.3f}, dag: {dag_reg.item():.3f}"
+        #     )
+
         return obj
 
 
+def normalize(v):
+    return v / torch.linalg.vector_norm(v)
+
+
+class SCCPowerIteration:
+    def __init__(self, model: "AutoEncoderLayers", update_scc_freq=100):
+        self.d = model.in_dim
+        self.update_scc_freq = update_scc_freq
+        self.get_matrix = model.get_adjacency_matrix
+
+        self.scc_list = None
+        self.update_scc()
+
+        self.v = None
+        self.vt = None
+        self.initialize_eigenvectors()
+
+        self.n_updates = 0
+
+    def initialize_eigenvectors(self):
+        self.v, self.vt = torch.ones(size=(2, self.d))
+        self.v = normalize(self.v)
+        self.vt = normalize(self.vt)
+        return self.power_iteration(5)
+
+    def update_scc(self):
+        n_components, labels = scipy.sparse.csgraph.connected_components(
+            csgraph=scipy.sparse.coo_matrix(self.get_matrix().detach().numpy()),
+            directed=True,
+            return_labels=True,
+            connection="strong",
+        )
+        self.scc_list = []
+        for i in range(n_components):
+            scc = np.where(labels == i)[0]
+            self.scc_list.append(scc)
+        print(len(self.scc_list))
+
+    def power_iteration(self, n_iter=5):
+        matrix = self.get_matrix() ** 2
+        for scc in self.scc_list:
+            if len(scc) == self.d:
+                scc = slice(None)
+            sub_matrix = matrix[scc][:, scc]
+            v = self.v[scc]
+            vt = self.vt[scc]
+            for i in range(n_iter):
+                v = normalize(sub_matrix.mv(v) + 1e-6 * v.sum())
+                vt = normalize(sub_matrix.T.mv(vt) + 1e-6 * vt.sum())
+            self.v[scc] = v
+            self.vt[scc] = vt
+
+        return matrix
+
+    def compute_gradient(self):
+        if self.n_updates % self.update_scc_freq == 0:
+            self.update_scc()
+            self.initialize_eigenvectors()
+
+        # matrix = self.power_iteration(4)
+        matrix = self.initialize_eigenvectors()
+
+        gradient = torch.zeros(size=(self.d, self.d))
+        for scc in self.scc_list:
+            if len(scc) == self.d:
+                scc = slice(None)
+            v = self.v[scc]
+            vt = self.vt[scc]
+            gradient[scc][:, scc] = torch.outer(vt, v) / torch.inner(vt, v)
+
+        gradient += torch.eye(self.d)
+        # gradient += matrix.T
+
+        self.n_updates += 1
+
+        return gradient, matrix
+
+
 class PowerIterationGradient:
-    def __init__(self, model: "AutoEncoderLayers", d, alpha=0.85):
+    def __init__(self, model: "AutoEncoderLayers"):
         self.model = model
-        self.d = d
-        self.alpha = alpha
+        self.d = model.in_dim
+
+        self.u = None
+        self.v = None
 
         self.init_eigenvect()
 
     def init_eigenvect(self):
-        self.u, self.v = torch.rand(size=(2, self.d))
+        self.u, self.v = torch.ones(size=(2, self.d))
         self.u = self.u / torch.linalg.vector_norm(self.u)
         self.v = self.v / torch.linalg.vector_norm(self.v)
         self.iterate(5)
@@ -230,23 +318,21 @@ class PowerIterationGradient:
     def iterate(self, n=2, A=None):
         with torch.no_grad():
             A = self.model.get_adjacency_matrix() ** 2 if A is None else A
+            A = A + 1e-6
             for _ in range(n):
                 self.one_iteration(A)
 
-    def one_iteration(self, A, alpha=0.8):
+    def one_iteration(self, A):
         """One iteration of power method"""
-
-        def normalize(u):
-            return u / torch.linalg.vector_norm(u)
-
-        dummy_value = max(A.max().item(), 1e-6)
-        A = A * alpha + (1 - alpha) * dummy_value / A.shape[0]
         self.u = normalize(A.T @ self.u)
         self.v = normalize(A @ self.v)
 
-    def power_grad(self):
+    def compute_gradient(self):
         """Gradient eigenvalue"""
         A = self.model.get_adjacency_matrix() ** 2
-        self.iterate(2, A)
-        grad = self.u[:, None] @ self.v[None] / (self.u.dot(self.v) + 1e-5)
+        # self.iterate(4, A)
+        self.init_eigenvect()
+        grad = self.u[:, None] @ self.v[None] / (self.u.dot(self.v) + 1e-6)
+        grad += torch.eye(self.d)
+        grad += A.T
         return grad, A
