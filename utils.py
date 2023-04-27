@@ -35,6 +35,7 @@ def get_leading_left_and_right_eigenvectors(A):
 
 
 def print_graph_from_weights(d, B_pred, B_true, thresholds):
+    B_true_square = B_true @ B_true
     for i in range(d):
         parents_weights = B_pred[:, i]
         parents = sorted(range(d), key=lambda j: parents_weights[j], reverse=True)
@@ -48,6 +49,9 @@ def print_graph_from_weights(d, B_pred, B_true, thresholds):
                 parents_str.append(f"\033[92m{j}\033[0m")
             elif B_true[i, j]:
                 parents_str.append(f"\033[93m{j}\033[0m")
+            # print the node in blue if it is actually the parent of a parent of the node
+            elif B_true_square[j, i]:
+                parents_str.append(f"\033[94m{j}\033[0m")
             else:
                 parents_str.append(f"\033[91m{j}\033[0m")
             # add | if the parent weight is greater than one of the thresholds
@@ -62,7 +66,7 @@ def print_graph_from_weights(d, B_pred, B_true, thresholds):
                 ]
                 if any(conditions):
                     parents_str.append("|")
-        print(f"Node {i}: " + " ".join(parents_str))
+        print(f"Node {i:2}: " + " ".join(parents_str))
     print("Thresholds t:")
     for t in thresholds:
         is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > t))

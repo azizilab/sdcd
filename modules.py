@@ -291,7 +291,7 @@ class SCCPowerIteration:
             vt = self.vt[scc]
             gradient[scc][:, scc] = torch.outer(vt, v) / torch.inner(vt, v)
 
-        gradient += torch.eye(self.d)
+        gradient += 100*torch.eye(self.d)
         # gradient += matrix.T
 
         self.n_updates += 1

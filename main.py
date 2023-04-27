@@ -16,16 +16,16 @@ X = simulation.simulate_nonlinear_sem(B_true, n, "mlp")
 X = torch.FloatTensor(X)
 
 model = AutoEncoderLayers(d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0)
-learning_rate = 2e-4  # 1e-3
+learning_rate = 1e-3
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)
-alpha = 0.02
+alpha = 0.05
 beta = 0.005
 
 n_subepochs = 15_000
 gammas = []
-for a in [10, 100, 1000]:
+for a in [10]:
     gammas += [a] * n_subepochs
 
 n_epochs = len(gammas)
