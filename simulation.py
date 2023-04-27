@@ -3,6 +3,7 @@ import random
 import igraph as ig
 import numpy as np
 from scipy.special import expit as sigmoid
+import pandas as pd
 
 
 def simulate_chain(n, d):
@@ -19,6 +20,7 @@ def simulate_chain(n, d):
 
 # #########################################################################
 # simulation and metrics from [1] Bello K., Aragam B., Ravikumar P. (2022).Ø
+
 
 def set_random_seed(seed):
     random.seed(seed)
@@ -53,24 +55,24 @@ def simulate_dag(d, s0, graph_type):
     def _graph_to_adjmat(G):
         return np.array(G.get_adjacency().data)
 
-    if graph_type == 'ER':
+    if graph_type == "ER":
         # Erdos-Renyi
         G_und = ig.Graph.Erdos_Renyi(n=d, m=s0)
         B_und = _graph_to_adjmat(G_und)
         B = _random_acyclic_orientation(B_und)
-    elif graph_type == 'SF':
+    elif graph_type == "SF":
         # Scale-free, Barabasi-Albert
         G = ig.Graph.Barabasi(n=d, m=int(round(s0 / d)), directed=True)
         B = _graph_to_adjmat(G)
-    elif graph_type == 'BP':
+    elif graph_type == "BP":
         # Bipartite, Sec 4.1 of (Gu, Fu, Zhou, 2018)
         top = int(0.2 * d)
         G = ig.Graph.Random_Bipartite(top, d - top, m=s0, directed=True, neimode=ig.OUT)
         B = _graph_to_adjmat(G)
-    elif graph_type == 'Fully':
+    elif graph_type == "Fully":
         B = np.triu(np.ones((d, d)), 1)
     else:
-        raise ValueError('unknown graph type')
+        raise ValueError("unknown graph type")
     B_perm = _random_permutation(B)
     assert ig.Graph.Adjacency(B_perm.tolist()).is_dag()
     return B_perm
@@ -111,24 +113,24 @@ def simulate_linear_sem(W, n, sem_type, noise_scale=None):
 
     def _simulate_single_equation(X, w, scale):
         """X: [n, num of parents], w: [num of parents], x: [n]"""
-        if sem_type == 'gauss':
+        if sem_type == "gauss":
             z = np.random.normal(scale=scale, size=n)
             x = X @ w + z
-        elif sem_type == 'exp':
+        elif sem_type == "exp":
             z = np.random.exponential(scale=scale, size=n)
             x = X @ w + z
-        elif sem_type == 'gumbel':
+        elif sem_type == "gumbel":
             z = np.random.gumbel(scale=scale, size=n)
             x = X @ w + z
-        elif sem_type == 'uniform':
+        elif sem_type == "uniform":
             z = np.random.uniform(low=-scale, high=scale, size=n)
             x = X @ w + z
-        elif sem_type == 'logistic':
+        elif sem_type == "logistic":
             x = np.random.binomial(1, sigmoid(X @ w)) * 1.0
-        elif sem_type == 'poisson':
+        elif sem_type == "poisson":
             x = np.random.poisson(np.exp(X @ w)) * 1.0
         else:
-            raise ValueError('unknown sem type')
+            raise ValueError("unknown sem type")
         return x
 
     d = W.shape[0]
@@ -138,17 +140,17 @@ def simulate_linear_sem(W, n, sem_type, noise_scale=None):
         scale_vec = noise_scale * np.ones(d)
     else:
         if len(noise_scale) != d:
-            raise ValueError('noise scale must be a scalar or has length d')
+            raise ValueError("noise scale must be a scalar or has length d")
         scale_vec = noise_scale
     if not is_dag(W):
-        raise ValueError('W must be a DAG')
+        raise ValueError("W must be a DAG")
     if np.isinf(n):  # population risk for linear gauss SEM
-        if sem_type == 'gauss':
+        if sem_type == "gauss":
             # make 1/d X'X = true cov
             X = np.sqrt(d) * np.diag(scale_vec) @ np.linalg.inv(np.eye(d) - W)
             return X
         else:
-            raise ValueError('population risk not available')
+            raise ValueError("population risk not available")
     # empirical risk
     G = ig.Graph.Weighted_Adjacency(W.tolist())
     ordered_vertices = G.topological_sorting()
@@ -178,15 +180,16 @@ def simulate_nonlinear_sem(B, n, sem_type, noise_scale=None):
         z = np.random.normal(scale=scale, size=n)
         pa_size = X.shape[1]
         if pa_size == 0:
-            return z
-        if sem_type == 'mlp':
+            return z, tuple()
+        if sem_type == "mlp":
             hidden = 100
             W1 = np.random.uniform(low=0.5, high=2.0, size=[pa_size, hidden])
             W1[np.random.rand(*W1.shape) < 0.5] *= -1
             W2 = np.random.uniform(low=0.5, high=2.0, size=hidden)
             W2[np.random.rand(hidden) < 0.5] *= -1
             x = sigmoid(X @ W1) @ W2 + z
-        elif sem_type == 'mim':
+            return x, (z, W1, W2)
+        elif sem_type == "mim":
             w1 = np.random.uniform(low=0.5, high=2.0, size=pa_size)
             w1[np.random.rand(pa_size) < 0.5] *= -1
             w2 = np.random.uniform(low=0.5, high=2.0, size=pa_size)
@@ -194,18 +197,29 @@ def simulate_nonlinear_sem(B, n, sem_type, noise_scale=None):
             w3 = np.random.uniform(low=0.5, high=2.0, size=pa_size)
             w3[np.random.rand(pa_size) < 0.5] *= -1
             x = np.tanh(X @ w1) + np.cos(X @ w2) + np.sin(X @ w3) + z
-        elif sem_type == 'gp':
+            return x, (z, w1, w2, w3)
+        elif sem_type == "gp":
             from sklearn.gaussian_process import GaussianProcessRegressor
+
             gp = GaussianProcessRegressor()
             x = gp.sample_y(X, random_state=None).flatten() + z
-        elif sem_type == 'gp-add':
+            return x, (z,)
+        elif sem_type == "gp-add":
             from sklearn.gaussian_process import GaussianProcessRegressor
+
             gp = GaussianProcessRegressor()
-            x = sum([gp.sample_y(X[:, i, None], random_state=None).flatten()
-                     for i in range(X.shape[1])]) + z
+            x = (
+                sum(
+                    [
+                        gp.sample_y(X[:, i, None], random_state=None).flatten()
+                        for i in range(X.shape[1])
+                    ]
+                )
+                + z
+            )
+            return x, (z,)
         else:
-            raise ValueError('unknown sem type')
-        return x
+            raise ValueError("unknown sem type")
 
     d = B.shape[0]
     scale_vec = noise_scale if noise_scale else np.ones(d)
@@ -213,10 +227,109 @@ def simulate_nonlinear_sem(B, n, sem_type, noise_scale=None):
     G = ig.Graph.Adjacency(B.tolist())
     ordered_vertices = G.topological_sorting()
     assert len(ordered_vertices) == d
+    param_dict = {}
     for j in ordered_vertices:
         parents = G.neighbors(j, mode=ig.IN)
-        X[:, j] = _simulate_single_equation(X[:, parents], scale_vec[j])
-    return X
+        sorted_parents = sorted(parents)
+        X[:, j], params = _simulate_single_equation(X[:, sorted_parents], scale_vec[j])
+        param_dict[j] = params
+    return X, param_dict
+
+
+def simulate_nonlinear_sem_knockdown(
+    B, n, sem_type, param_dict, knockdown_idx, knockdown_eff=1.0, noise_scale=None
+):
+    """Simulate samples from nonlinear SEM.
+
+    Args:
+        B (np.ndarray): [d, d] binary adj matrix of DAG
+        n (int): num of samples
+        sem_type (str): mlp, mim, gp, gp-add
+        param_dict (dict): parameters of SEM generated by ``simulate_nonlinear_sem``.
+        knockdown_idx (int): which node to knockdown.
+        knockdown_eff (float): percent of x to remove (1.0) is a full hard intervention.
+        noise_scale (np.ndarray): scale parameter of additive noise, default all ones
+
+    Returns:
+        X (np.ndarray): [n, d] sample matrix
+    """
+
+    def _simulate_single_equation(X, scale, params):
+        """X: [n, num of parents], x: [n]"""
+        z = np.random.normal(scale=scale, size=n)
+        pa_size = X.shape[1]
+        if pa_size == 0:
+            return z, tuple()
+        if sem_type == "mlp":
+            hidden = 100
+            W1, W2 = params[1:]
+            x = sigmoid(X @ W1) @ W2 + z
+            return x, (W1, W2)
+        elif sem_type == "mim":
+            w1, w2, w3 = params[1:]
+            x = np.tanh(X @ w1) + np.cos(X @ w2) + np.sin(X @ w3) + z
+            return x, (z, w1, w2, w3)
+        elif sem_type == "gp":
+            from sklearn.gaussian_process import GaussianProcessRegressor
+
+            gp = GaussianProcessRegressor()
+            x = gp.sample_y(X, random_state=None).flatten() + z
+            return x, (z,)
+        elif sem_type == "gp-add":
+            from sklearn.gaussian_process import GaussianProcessRegressor
+
+            gp = GaussianProcessRegressor()
+            x = (
+                sum(
+                    [
+                        gp.sample_y(X[:, i, None], random_state=None).flatten()
+                        for i in range(X.shape[1])
+                    ]
+                )
+                + z
+            )
+            return x, (z,)
+        else:
+            raise ValueError("unknown sem type")
+
+    d = B.shape[0]
+    scale_vec = noise_scale if noise_scale else np.ones(d)
+    X = np.zeros([n, d])
+    G = ig.Graph.Adjacency(B.tolist())
+    ordered_vertices = G.topological_sorting()
+    assert len(ordered_vertices) == d
+    new_param_dict = {}
+    for j in ordered_vertices:
+        parents = G.neighbors(j, mode=ig.IN)
+        X[:, j], params = _simulate_single_equation(
+            X[:, parents], scale_vec[j], param_dict[j]
+        )
+        if j == knockdown_idx:
+            X[:, j] *= 1 - knockdown_eff
+        new_param_dict[j] = params
+    return X, new_param_dict
+
+
+def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0):
+    assert knockdown_eff <= 1.0 and knockdown_eff >= 0.0
+    d = B.shape[0]
+    X_subsets = []
+    perturbation_labels = []
+
+    X, param_dict = simulate_nonlinear_sem(B, n, sem_type)
+    X_subsets.append(X)
+    perturbation_labels.append("obs")
+
+    for i in range(d):
+        X_int, _ = simulate_nonlinear_sem_knockdown(
+            B, n, sem_type, param_dict, i, knockdown_eff=1.0
+        )
+        X_subsets.append(X_int)
+        perturbation_labels.append(i)
+    perturbation_label_col = pd.Series(sum([n * [p] for p in perturbation_labels], []))
+    X_df = pd.DataFrame(np.vstack(X_subsets), columns=np.arange(d))
+    X_df["perturbation_label"] = perturbation_label_col.astype("category")
+    return X_df, param_dict
 
 
 def count_accuracy(B_true, B_est):
@@ -239,14 +352,14 @@ def count_accuracy(B_true, B_est):
     """
     if (B_est == -1).any():  # cpdag
         if not ((B_est == 0) | (B_est == 1) | (B_est == -1)).all():
-            raise ValueError('B_est should take value in {0,1,-1}')
+            raise ValueError("B_est should take value in {0,1,-1}")
         if ((B_est == -1) & (B_est.T == -1)).any():
-            raise ValueError('undirected edge should only appear once')
+            raise ValueError("undirected edge should only appear once")
     else:  # dag
         if not ((B_est == 0) | (B_est == 1)).all():
-            raise ValueError('B_est should take value in {0,1}')
+            raise ValueError("B_est should take value in {0,1}")
         if not is_dag(B_est):
-            raise ValueError('B_est should be a DAG')
+            raise ValueError("B_est should be a DAG")
     d = B_true.shape[0]
     # linear index of nonzeros
     pred_und = np.flatnonzero(B_est == -1)
@@ -278,4 +391,4 @@ def count_accuracy(B_true, B_est):
     extra_lower = np.setdiff1d(pred_lower, cond_lower, assume_unique=True)
     missing_lower = np.setdiff1d(cond_lower, pred_lower, assume_unique=True)
     shd = len(extra_lower) + len(missing_lower) + len(reverse)
-    return {'fdr': fdr, 'tpr': tpr, 'fpr': fpr, 'shd': shd, 'nnz': pred_size}
+    return {"fdr": fdr, "tpr": tpr, "fpr": fpr, "shd": shd, "nnz": pred_size}
