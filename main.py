@@ -12,7 +12,7 @@ set_random_seed_all(0)
 n, d = 1000, 20
 n_edges = 4 * d
 B_true = simulation.simulate_dag(d, n_edges, "ER")
-X = simulation.simulate_nonlinear_sem(B_true, n, "mlp")
+X, param_dict = simulation.simulate_nonlinear_sem(B_true, n, "mlp")
 X = torch.FloatTensor(X)
 
 model = AutoEncoderLayers(d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0)

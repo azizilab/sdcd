@@ -83,16 +83,25 @@ class LinearParallel(nn.Module):
 
 
 class DispatcherLayer(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim, adjacency_p=2.0):
+    def __init__(self, in_dim, out_dim, hidden_dim, adjacency_p=2.0, mask=None):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.hidden_dim = hidden_dim
         self.adjacency_p = adjacency_p
 
-        self.weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
+        self.mask = torch.ones((in_dim, out_dim), requires_grad=False)
+        if mask is not None:
+            self.mask = torch.tensor(mask, requires_grad=False)
+        self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
         self.bias = nn.Parameter(torch.zeros(out_dim, hidden_dim))
         self.reset_parameters()
+
+    @property
+    def weight(self):
+        if self.mask is not None:
+            return self._weight * self.mask[:, :, None]
+        return self._weight
 
     def forward(self, x):
         """
@@ -125,6 +134,7 @@ class AutoEncoderLayers(nn.Module):
         activation=nn.ReLU(),
         shared_layers: bool = True,
         adjacency_p: float = 2.0,
+        mask=None,
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -135,7 +145,13 @@ class AutoEncoderLayers(nn.Module):
 
         self.layers = nn.ModuleList()
         self.layers.append(
-            DispatcherLayer(self.in_dim, self.in_dim, hidden_dims[0], self.adjacency_p)
+            DispatcherLayer(
+                self.in_dim,
+                self.in_dim,
+                hidden_dims[0],
+                adjacency_p=self.adjacency_p,
+                mask=mask,
+            )
         )
         self.identity = torch.eye(self.in_dim)
 
@@ -177,9 +193,15 @@ class AutoEncoderLayers(nn.Module):
         for layer in self.layers:
             layer.reset_parameters()
 
-    def reconstruction_loss(self, x):
+    def reconstruction_loss(self, x, interventions = None):
         x_mean = self(x).squeeze(2)
-        nll = ((x_mean - x) ** 2).sum()
+        if interventions is not None:
+            interventions[torch.where(interventions == -1)] = x.shape[1]
+            interventions_oh = nn.functional.one_hot(interventions.squeeze(), num_classes = x.shape[1] + 1)[:, :-1] # cutoff obs
+            mask_interventions_oh = 1 - interventions_oh
+            nll = (mask_interventions_oh * (x_mean - x) ** 2).sum()
+        else:
+            nll = ((x_mean - x) ** 2).sum()
         # we normalize by the number of samples (but ideally we shouldn't, as it mess up
         # with the L1 and L2 regularization scales)
         nll /= x.shape[0]
@@ -205,8 +227,8 @@ class AutoEncoderLayers(nn.Module):
         h_val = (grad.detach() * A).sum()
         return h_val
 
-    def loss(self, x, alpha=1.0, beta=1.0, gamma=1.0, n_observations=None):
-        nll = self.reconstruction_loss(x)
+    def loss(self, x, alpha=1.0, beta=1.0, gamma=1.0, n_observations=None, interventions=None):
+        nll = self.reconstruction_loss(x, interventions=interventions)
         l1_reg = alpha * self.l1_reg_dispatcher()  # * n_obs_norm
         l2_reg = beta * self.l2_reg_all_weights()  # * n_obs_norm
         # mu = 1 / gamma
