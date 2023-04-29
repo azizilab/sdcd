@@ -1,6 +1,8 @@
 """
 Contains helper modules used in the models.
 """
+from typing import Literal
+
 import scipy.sparse
 import torch
 import torch.nn as nn
@@ -83,7 +85,7 @@ class LinearParallel(nn.Module):
 
 
 class DispatcherLayer(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim, adjacency_p=2.0, mask=None):
+    def __init__(self, in_dim, out_dim, hidden_dim, adjacency_p=2.0, mask=None, warmstart=False):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -91,9 +93,15 @@ class DispatcherLayer(nn.Module):
         self.adjacency_p = adjacency_p
 
         self.mask = torch.ones((in_dim, out_dim), requires_grad=False)
-        if mask is not None:
+        if mask is not None and not warmstart:
             self.mask = torch.tensor(mask, requires_grad=False)
-        self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
+
+        if mask is not None and warmstart:
+            warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat((1,1,hidden_dim))
+            self._weight = nn.Parameter(warmstart_tensor)
+        else:
+            self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
+
         self.bias = nn.Parameter(torch.zeros(out_dim, hidden_dim))
         self.reset_parameters()
 
@@ -135,6 +143,8 @@ class AutoEncoderLayers(nn.Module):
         shared_layers: bool = True,
         adjacency_p: float = 2.0,
         mask=None,
+        warmstart=False,
+        dag_penalty_flavor: Literal["scc", "power_iteration", "logdet", "none"] = "scc",
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -151,12 +161,16 @@ class AutoEncoderLayers(nn.Module):
                 hidden_dims[0],
                 adjacency_p=self.adjacency_p,
                 mask=mask,
+                warmstart=warmstart,
             )
         )
         self.identity = torch.eye(self.in_dim)
 
-        # self.power_grad = PowerIterationGradient(self)
-        self.power_grad = SCCPowerIteration(self, 1000)
+        self.dag_penalty_flavor = dag_penalty_flavor
+        if dag_penalty_flavor == "scc":
+            self.power_grad = SCCPowerIteration(self, 1000)
+        elif dag_penalty_flavor == "power_iteration":
+            self.power_grad = PowerIterationGradient(self)
 
         # if layers are shared, use regular dense layers
         # else use parallel layers
@@ -232,8 +246,12 @@ class AutoEncoderLayers(nn.Module):
         l1_reg = alpha * self.l1_reg_dispatcher()  # * n_obs_norm
         l2_reg = beta * self.l2_reg_all_weights()  # * n_obs_norm
         # mu = 1 / gamma
-        # dag_reg = self.dag_reg()
-        dag_reg = self.dag_reg_power_grad()
+        if self.dag_penalty_flavor == "logdet":
+            dag_reg = self.dag_reg()
+        elif self.dag_penalty_flavor in ("scc", "power_iteration"):
+            dag_reg = self.dag_reg_power_grad()
+        elif self.dag_penalty_flavor == "none":
+            dag_reg = 0
         obj = nll + l1_reg + l2_reg + gamma * dag_reg
         # if np.random.rand() < 0.01:
         #     print(
