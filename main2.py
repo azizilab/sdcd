@@ -180,7 +180,7 @@ for epoch in range(n_epochs):
                 # Check if the adjacency matrix has changed
                 n_edges_change = (B_pred_thresh != _gamma_update_prev_adj).sum()
                 is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > 0.1))
-                wandb.log({"n_edges_change": n_edges_change, "is_dag": is_dag, "epoch": epoch})
+                wandb.log({"n_edges_change": n_edges_change, "is_dag": int(is_dag), "epoch": epoch})
                 if is_dag and n_edges_change <= gamma_update_delta:
                     # Decrease patience if not changing much
                     _gamma_update_patience_counter -= 1

@@ -1,8 +1,9 @@
-import torch 
-import wandb
-
 import numpy as np
 import pandas as pd
+
+import torch 
+import wandb
+import networkx as nx
 
 from utils import print_graph_from_weights
 
@@ -20,7 +21,7 @@ def subset_interventions(X_df, n_interventions, maintain_dataset_size=False, obs
     subsample_intervention_names = X_df.columns[subsample_intervention_idxs]
     X_subsets = []
     if maintain_dataset_size:
-        X_subsets.append(X_df[perturbation_colname].isin(subsample_intervention_names))
+        X_subsets.append(X_df[X_df[perturbation_colname].isin(subsample_intervention_names)])
         size_obs_subset = size_obs - size_interventions * n_interventions
         obs_subset_idxs = np.random.choice(
             np.arange(size_obs), size=size_obs_subset, replace=False
@@ -36,25 +37,30 @@ def create_intervention_dataloader(X_df, batch_size, obs_label="obs", perturbati
 # ensure interventions are ints mapping to index of column
     column_mapping = {c: i for i, c in enumerate(X_df.columns[:-1])}
     column_mapping[obs_label] = -1
-    interventions = torch.LongTensor(X_df[perturbation_colname].map(column_mapping)).reshape((-1, 1))
+    interventions = torch.LongTensor(X_df[perturbation_colname].map(column_mapping).values).reshape((-1, 1))
     dataset = torch.utils.data.TensorDataset(X, interventions)
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
 
-def train(model, data_loader, optimizer, config, log_wandb=False, print_graph=True, B_true=None):
+def train(model, data_loader, optimizer, config, freeze_gamma_at_dag=False, log_wandb=False, print_graph=True, B_true=None, start_wandb_epoch=0, n_epochs_check=1000):
     """Train the model. Assumes data_loader outputs batches alongside interventions."""
     # unpack config
     n_epochs = config["n_epochs"]
     alphas = config["alphas"]
     gammas = config["gammas"]
     beta = config["beta"]
+    is_prescreen = model.dag_penalty_flavor == "none"
 
     n_observations = data_loader.batch_size * len(data_loader)
     d = data_loader.dataset[0][0].shape[0]
 
+    gamma_cap = None
     for epoch in range(n_epochs):
         alpha = alphas[epoch]
-        gamma = gammas[epoch]
+        if gamma_cap is None:
+            gamma = gammas[epoch]
+        else:
+            gamma = gamma_cap
 
         epoch_loss = 0
         for batch in data_loader:
@@ -65,7 +71,7 @@ def train(model, data_loader, optimizer, config, log_wandb=False, print_graph=Tr
             optimizer.step()
             epoch_loss += loss.item()
 
-        if epoch % 1000 == 0:
+        if epoch % n_epochs_check == 0:
             B_pred = model.get_adjacency_matrix().detach().numpy()
 
             if B_true is not None:
@@ -75,6 +81,12 @@ def train(model, data_loader, optimizer, config, log_wandb=False, print_graph=Tr
 
             epoch_loss /= len(data_loader)
             print(f"Epoch {epoch}: loss={epoch_loss:.2f}, score={score}, gamma={gamma:.2f}")
+
+            if epoch > max(0.05 * n_epochs, 10) and freeze_gamma_at_dag and gamma_cap is None:
+                # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
+                is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > 0.3))
+                if is_dag:
+                    gamma_cap = gamma
 
             if log_wandb:
                 if B_true is not None:
@@ -87,7 +99,7 @@ def train(model, data_loader, optimizer, config, log_wandb=False, print_graph=Tr
                 n_edges_pred = (B_pred > 0.3).sum()
                 wandb.log(
                     {
-                        "epoch": epoch,
+                        "epoch": epoch + start_wandb_epoch,
                         "epoch_loss": epoch_loss,
                         "score": score,
                         "precision": precision,
@@ -95,6 +107,7 @@ def train(model, data_loader, optimizer, config, log_wandb=False, print_graph=Tr
                         "n_edges_pred": n_edges_pred,
                         "gamma": gamma,
                         "alpha": alpha,
+                        "is_prescreen": int(is_prescreen),
                     }
                 )
 

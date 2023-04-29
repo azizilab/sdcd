@@ -94,7 +94,7 @@ class DispatcherLayer(nn.Module):
 
         self.mask = torch.ones((in_dim, out_dim), requires_grad=False)
         if mask is not None and not warmstart:
-            self.mask = torch.tensor(mask, requires_grad=False)
+            self.mask = torch.tensor(mask.astype(int), requires_grad=False)
 
         if mask is not None and warmstart:
             warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat((1,1,hidden_dim))
@@ -153,6 +153,14 @@ class AutoEncoderLayers(nn.Module):
         self.shared_layers = shared_layers
         self.adjacency_p = adjacency_p
 
+        self.dag_penalty_flavor = dag_penalty_flavor
+        if dag_penalty_flavor == "none":
+            # Need to mask out identity to prevent learning self-loops
+            if mask is not None:
+                mask = (mask.astype(bool) & (1 - np.eye(self.in_dim)).astype(bool)).astype(int)
+            else:
+                mask = 1 - np.eye(self.in_dim)
+
         self.layers = nn.ModuleList()
         self.layers.append(
             DispatcherLayer(
@@ -164,13 +172,13 @@ class AutoEncoderLayers(nn.Module):
                 warmstart=warmstart,
             )
         )
-        self.identity = torch.eye(self.in_dim)
 
-        self.dag_penalty_flavor = dag_penalty_flavor
         if dag_penalty_flavor == "scc":
             self.power_grad = SCCPowerIteration(self, 1000)
         elif dag_penalty_flavor == "power_iteration":
             self.power_grad = PowerIterationGradient(self)
+
+        self.identity = torch.eye(self.in_dim)
 
         # if layers are shared, use regular dense layers
         # else use parallel layers
