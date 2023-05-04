@@ -310,13 +310,15 @@ def simulate_nonlinear_sem_knockdown(
     return X, new_param_dict
 
 
-def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0):
+def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0, size_observational=None):
     assert knockdown_eff <= 1.0 and knockdown_eff >= 0.0
+    if size_observational is None:
+        size_observational = n
     d = B.shape[0]
     X_subsets = []
     perturbation_labels = []
 
-    X, param_dict = simulate_nonlinear_sem(B, n, sem_type)
+    X, param_dict = simulate_nonlinear_sem(B, size_observational, sem_type)
     X_subsets.append(X)
     perturbation_labels.append("obs")
 
@@ -326,7 +328,7 @@ def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0):
         )
         X_subsets.append(X_int)
         perturbation_labels.append(i)
-    perturbation_label_col = pd.Series(sum([n * [p] for p in perturbation_labels], []))
+    perturbation_label_col = pd.Series(sum([X_subset.shape[0] * [p] for p, X_subset in zip(perturbation_labels, X_subsets)], []))
     X_df = pd.DataFrame(np.vstack(X_subsets), columns=np.arange(d))
     X_df["perturbation_label"] = perturbation_label_col.astype("category")
     return X_df, param_dict
