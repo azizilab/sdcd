@@ -49,21 +49,34 @@ def compute_p_vals(X_df):
     return edges_df
 
 
-def ks_test_screen(X_df, sig=0.10, verbose=False):
+def ks_test_screen(X_df, use_sig=True, sig=0.10, n_parents=50, verbose=False):
     """Runs a pre-screen on candidate edges using the KS test metric.
 
     Returns a binary mask indicating which edges to consider.
     """
     edges_df = compute_p_vals(X_df)
-    valid_edges_df = edges_df[edges_df.pval_adj < sig]
-    if verbose:
-        print(
-            f"Fraction edges valid under significance level {sig}: {len(valid_edges_df) / len(edges_df):.2f}"
-        )
+    if use_sig:
+        valid_edges_df = edges_df[edges_df.pval_adj < sig]
+        if verbose:
+            print(
+                f"Fraction edges valid under significance level {sig}: {len(valid_edges_df) / len(edges_df):.2f}"
+            )
+    else:
+        G = X_df.shape[1] - 1
+        if n_parents >= G:
+            valid_edges_df = edges_df
+        else:
+            valid_edges_dfs = []
+            sorted_groups = [df.sort_values("pval_adj", ascending=True) for _, df in edges_df.groupby(["target_gene_idx"])]
+            for g in sorted_groups:
+                valid_edges_dfs.append(g[:n_parents])
+            valid_edges_df = pd.concat(valid_edges_dfs)
+
     G = X_df.shape[1] - 1
     mask = np.zeros((G, G), dtype=int)
     for row in valid_edges_df.iterrows():
         mask[int(row[1]["candidate_parent_idx"]), int(row[1]["target_gene_idx"])] = 1
+
     return mask
 
 

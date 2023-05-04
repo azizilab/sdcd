@@ -17,7 +17,9 @@ seed = 0
 set_random_seed_all(seed)
 
 n, d = 50, 20
+# n, d = 50, 200
 n_edges = 5 * d
+# n_edges = 10 * d
 knockdown_eff = 1.0
 B_true = simulation.simulate_dag(d, n_edges, "ER")
 X_df, param_dict = simulation.generate_full_interventional_set(
@@ -26,19 +28,23 @@ X_df, param_dict = simulation.generate_full_interventional_set(
 X = torch.FloatTensor(X_df.to_numpy()[:, :-1].astype(float))
 
 prescreen = False
+n_parents = None
+warmstart = True
 sig = 0.2
 mask = None
 # Prescreen
-if prescreen:
-    mask = ks_test_screen(X_df, sig=sig, verbose=True)
-
+if prescreen or warmstart:
+    mask = ks_test_screen(X_df, use_sig=n_parents is None, sig=sig, n_parents=n_parents, verbose=True)
 use_interventions = True
 
-# Begin training
+dag_penalty_flavor = "scc"
 model = AutoEncoderLayers(
-    d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0, mask=mask
+    d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0, mask=mask, warmstart=warmstart,
+    dag_penalty_flavor=dag_penalty_flavor
 )
-learning_rate = 2e-4
+# learning_rate = 2e-4
+learning_rate = 1e-3
+batch_size = 500
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 if use_interventions:
@@ -47,45 +53,46 @@ if use_interventions:
     column_mapping["obs"] = -1
     interventions = torch.LongTensor(X_df["perturbation_label"].map(column_mapping)).reshape((-1, 1))
     dataset = torch.utils.data.TensorDataset(X, interventions)
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=n, shuffle=True, drop_last=True)
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 else:
-    data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)
+    data_loader = torch.utils.data.DataLoader(X, batch_size=batch_size, shuffle=True, drop_last=True)
 
-n_epochs = 45_000
-gammas = []
-gamma_choices = [10, 100, 1000]
-for a in gamma_choices:
-    gammas += [a] * int(n_epochs // len(gamma_choices))
-if len(gammas) != n_epochs:
-    gammas += [gamma_choices[-1]] * int(n_epochs % gamma_choices)
+n_epochs = 25_000
 
 alpha_update_flavor = "fixed"
-alpha_choices = [2e-2]
+alpha_choices = [5e-2]
 if alpha_update_flavor == "fixed":
     alphas = []
     for a in alpha_choices:
         alphas += [a] * int(n_epochs // len(alpha_choices))
-    if len(gammas) != n_epochs:
+    if len(alphas) != n_epochs:
         alphas += [alpha_choices[-1]] * int(n_epochs % alpha_choices)
 elif alpha_update_flavor == "linear":
-    alphas = np.linspace(0, alpha_max, num=n_epochs).tolist()
+    alphas = np.linspace(0, alpha_choices[-1], num=n_epochs).tolist()
 
 beta = 0.005
 
 # Hyperparam tune config
 gamma_update_flavor = "fixed"
+gammas = []
+# gamma_choices = [10, 100, 500, 500, 500, 500]
+gamma_choices = [10]
+for a in gamma_choices:
+    gammas += [a] * int(n_epochs // len(gamma_choices))
+if len(gammas) != n_epochs:
+    gammas += [gamma_choices[-1]] * int(n_epochs % gamma_choices[-1])
 gamma_update_interval_epochs = 10
 gamma_update_config = None
 if gamma_update_flavor == "fixed":
     gamma_update_config = {"gammas": gamma_choices}
 elif gamma_update_flavor == "annealing":
-    gamma_update_patience = 100
+    gamma_update_patience = 1000000
     gamma_update_delta = 0
     gamma_update_step = 20
     gamma_update_cycle_step = 100
     gamma_update_floor = 10
-    gamma_update_ceil = 1000
-    gamma_update_max_cycle_epochs = 20000
+    gamma_update_ceil = 200
+    gamma_update_max_cycle_epochs = 25000
     gamma_update_config = {
         "interval": gamma_update_interval_epochs,
         "patience": gamma_update_patience,
@@ -104,11 +111,13 @@ elif gamma_update_flavor == "annealing":
 
 # Log config
 wandb.init(
-    project="causal-perturbseq",
+    project="main2-simulation",
     config={
         "n": n,
         "d": d,
+        "n_edges": n_edges,
         "learning_rate": learning_rate,
+        "batch_size": batch_size,
         "seed": seed,
         "prescreen": prescreen,
         "sig": sig,
@@ -118,6 +127,7 @@ wandb.init(
         "knockdown_eff": knockdown_eff,
         "gamma_update_flavor": gamma_update_flavor,
         "gamma_update_config": gamma_update_config,
+        "dag_penalty_flavor": dag_penalty_flavor,
         "use_interventions": use_interventions,
     },
 )
@@ -170,7 +180,7 @@ for epoch in range(n_epochs):
                 # Check if the adjacency matrix has changed
                 n_edges_change = (B_pred_thresh != _gamma_update_prev_adj).sum()
                 is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > 0.1))
-                wandb.log({"n_edges_change": n_edges_change, "is_dag": is_dag, "epoch": epoch})
+                wandb.log({"n_edges_change": n_edges_change, "is_dag": int(is_dag), "epoch": epoch})
                 if is_dag and n_edges_change <= gamma_update_delta:
                     # Decrease patience if not changing much
                     _gamma_update_patience_counter -= 1
