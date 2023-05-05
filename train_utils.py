@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-import torch 
+import torch
 import wandb
 import networkx as nx
 
@@ -42,13 +42,18 @@ def create_intervention_dataloader(X_df, batch_size, obs_label="obs", perturbati
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
 
-def train(model, data_loader, optimizer, config, freeze_gamma_at_dag=False, log_wandb=False, print_graph=True, B_true=None, start_wandb_epoch=0, n_epochs_check=1000):
+def train(model, data_loader, optimizer, config, log_wandb=False, print_graph=True, B_true=None, start_wandb_epoch=0):
     """Train the model. Assumes data_loader outputs batches alongside interventions."""
     # unpack config
     n_epochs = config["n_epochs"]
     alphas = config["alphas"]
     gammas = config["gammas"]
     beta = config["beta"]
+    threshold = config.get("threshold", 0.3)
+    freeze_gamma_at_dag = config.get("freeze_gamma_at_dag", False)
+    freeze_gamma_threshold = config.get("freeze_gamma_threshold", 0.5)
+    n_epochs_check = config.get("n_epochs_check", 1000)
+
     is_prescreen = model.dag_penalty_flavor == "none"
 
     n_observations = data_loader.batch_size * len(data_loader)
@@ -85,28 +90,31 @@ def train(model, data_loader, optimizer, config, freeze_gamma_at_dag=False, log_
             B_pred = model.get_adjacency_matrix().detach().numpy()
 
             if B_true is not None:
-                score = (B_true != (B_pred > 0.3)).sum()
+                diff = B_true != (B_pred > threshold)
+                score = diff.sum()
+                shd = score - ((((diff + diff.transpose()) == 0) & (diff != 0)).sum() / 2)
             else:
                 score = "na"
+                shd = "na"
 
             epoch_loss /= len(data_loader)
-            print(f"Epoch {epoch}: loss={epoch_loss:.2f}, score={score}, gamma={gamma:.2f}")
+            print(f"Epoch {epoch}: loss={epoch_loss:.2f}, score={score}, shd={shd}, gamma={gamma:.2f}")
 
             if epoch > max(0.05 * n_epochs, 10) and freeze_gamma_at_dag and gamma_cap is None:
                 # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
-                is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > 0.3))
+                is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > freeze_gamma_threshold))
                 if is_dag:
                     gamma_cap = gamma
 
             if log_wandb:
                 if B_true is not None:
-                    recall = (B_true.astype(bool) & (B_pred > 0.3)).sum() / B_true.sum()
-                    precision = (B_true.astype(bool) & (B_pred > 0.3)).sum() / (B_pred > 0.3).sum()
+                    recall = (B_true.astype(bool) & (B_pred > threshold)).sum() / B_true.sum()
+                    precision = (B_true.astype(bool) & (B_pred > threshold)).sum() / (B_pred > threshold).sum()
                 else:
                     recall = "na"
                     precision = "na"
 
-                n_edges_pred = (B_pred > 0.3).sum()
+                n_edges_pred = (B_pred > threshold).sum()
                 epoch_loss_details = {k: sum(d[k].item() for d in epoch_loss_details) for k in epoch_loss_details[0]}
                 epoch_loss_details = {k: v / len(data_loader) for k, v in epoch_loss_details.items()}
 
@@ -115,6 +123,7 @@ def train(model, data_loader, optimizer, config, freeze_gamma_at_dag=False, log_
                         "epoch": epoch + start_wandb_epoch,
                         "epoch_loss": epoch_loss,
                         "score": score,
+                        "shd": shd,
                         "precision": precision,
                         "recall": recall,
                         "n_edges_pred": n_edges_pred,

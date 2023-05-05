@@ -140,7 +140,9 @@ def print_graph_from_weights(d, B_pred, B_true, thresholds, max_parents=50, max_
     print("Thresholds t:")
     for t in thresholds:
         is_dag = nx.is_directed_acyclic_graph(nx.DiGraph(B_pred > t))
-        sdh = (B_true != (B_pred > t)).sum()
+        diff = B_true != (B_pred > t)
+        score = diff.sum()
+        shd = score - ((((diff + diff.transpose()) == 0) & (diff != 0)).sum() / 2)
         print(f"\tt >{t}: is_dag={is_dag}, sdh={sdh}")
     print()
     print()
