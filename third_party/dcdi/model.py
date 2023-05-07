@@ -16,7 +16,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 
-from dcdfg.dcdi.module import MLPGaussianModule
+from third_party.dcdi.module import MLPGaussianModule
 
 
 class MLPGaussianModel(pl.LightningModule):

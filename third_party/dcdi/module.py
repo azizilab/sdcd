@@ -12,6 +12,8 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -105,6 +107,10 @@ class MLPGaussianModule(nn.Module):
                 self.num_vars
             )
             self.constraint_norm = self.compute_dag_constraint(full_adjacency).item()
+            if math.isinf(self.constraint_norm):
+                raise ValueError(
+                    f"Constraint norm is infinite. DCDI likely cannot scale to {self.num_vars} features."
+                )
 
     def compute_dag_constraint(self, w_adj):
         """
@@ -198,6 +204,7 @@ class MLPGaussianModule(nn.Module):
         :return: (batch_size, num_vars) log-likelihoods
         """
         density_params = self.forward(x)
+
         stds = torch.exp(self.log_stds)
         return torch.distributions.Normal(
             torch.cat(density_params, 1), stds.unsqueeze(0)

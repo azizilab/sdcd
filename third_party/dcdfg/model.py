@@ -21,7 +21,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 
-from dcdfg.lowrank_mlp.module import MLPModularGaussianModule
+from third_party.dcdfg.module import MLPModularGaussianModule
 
 
 class MLPModuleGaussianModel(pl.LightningModule):

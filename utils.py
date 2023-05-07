@@ -143,6 +143,6 @@ def print_graph_from_weights(d, B_pred, B_true, thresholds, max_parents=50, max_
         diff = B_true != (B_pred > t)
         score = diff.sum()
         shd = score - ((((diff + diff.transpose()) == 0) & (diff != 0)).sum() / 2)
-        print(f"\tt >{t}: is_dag={is_dag}, sdh={sdh}")
+        print(f"\tt >{t}: is_dag={is_dag}, shd={shd}")
     print()
     print()
