@@ -1,6 +1,6 @@
 #!/bin/bash
 
-declare -a n_edges_per_d_vals=(2, 5, 10, 20)
+declare -a n_edges_per_d_vals=(2 5 10 20)
 
 # Define an array of values for seed
 declare -a seed_vals=(0)

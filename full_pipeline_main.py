@@ -340,7 +340,9 @@ def save_B_pred(
 @click.command()
 @click.option("--n", default=50, help="Per interventional subset")
 @click.option("--d", type=int, help="Number of dimensions")
-@click.option("--n_edges_per_d", default=5, help="Number of edges per dimension")
+@click.option(
+    "--n_edges_per_d", type=int, default=5, help="Number of edges per dimension"
+)
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
