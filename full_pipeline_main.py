@@ -32,9 +32,10 @@ from third_party.callback import (
 )
 
 
-def generate_dataset(n, d, seed, frac_interventions):
+def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
+    assert n_edges_per_d < d
     maintain_dataset_size = True
-    n_edges = 5 * d
+    n_edges = n_edges_per_d * d
     knockdown_eff = 1.0
 
     set_random_seed_all(seed)
@@ -339,13 +340,16 @@ def save_B_pred(
 @click.command()
 @click.option("--n", default=50, help="Per interventional subset")
 @click.option("--d", type=int, help="Number of dimensions")
+@click.option("--n_edges_per_d", default=5, help="Number of edges per dimension")
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
     "--model", default="all", help="Model to run. Choices are [all, sdcdi, dcdi, dcdfg]"
 )
-def run_full_pipeline(n, d, seed, frac_interventions, model):
-    X_df, B_true, wandb_config_dict = generate_dataset(n, d, seed, frac_interventions)
+def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model):
+    X_df, B_true, wandb_config_dict = generate_dataset(
+        n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d
+    )
     save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
     if model == "all" or model == "sdcdi":
