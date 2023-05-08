@@ -62,7 +62,7 @@ def generate_dataset(n, d, seed, frac_interventions):
 
 
 def run_sdcdi(X_df, B_true, wandb_config_dict):
-    batch_size = 500
+    batch_size = 256
     data_loader = create_intervention_dataloader(X_df, batch_size=batch_size)
 
     ps_learning_rate = 2e-3
@@ -194,7 +194,8 @@ def run_sdcdi(X_df, B_true, wandb_config_dict):
     train_time = time.time() - start
 
     pred_adj = model.get_adjacency_matrix().detach().numpy()
-    metrics_dict = compute_metrics(pred_adj, B_true)
+    pred_adj_thresh = (pred_adj > threshold).astype(int)
+    metrics_dict = compute_metrics(pred_adj_thresh, B_true)
     metrics_dict["train_time"] = train_time
 
     wandb.log(metrics_dict)
@@ -234,7 +235,7 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
     trainer = pl.Trainer(
         accelerator="gpu",
         gpus=1,
-        max_epochs=60000,
+        max_epochs=5000,
         logger=WandbLogger(
             project="full-pipeline-simulation-DCDI", log_model=True, reinit=True
         ),
@@ -250,7 +251,7 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
     train_time = time.time() - start
 
     model.module.threshold()
-    pred_adj = np.array(model.module.weight_mask.detach().cpu().numpy() > 0, dtype=int)
+    pred_adj = np.array(model.module.get_w_adj().detach().cpu().numpy() > 0, dtype=int)
     metrics_dict = compute_metrics(pred_adj, B_true)
     metrics_dict["train_time"] = train_time
 
@@ -300,7 +301,7 @@ def run_dcdfg(X_df, B_true, wandb_config_dict):
     trainer = pl.Trainer(
         accelerator="gpu",
         gpus=1,
-        max_epochs=60000,
+        max_epochs=5000,
         logger=WandbLogger(
             project="full-pipeline-simulation-DCDFG", log_model=True, reinit=True
         ),
@@ -351,14 +352,14 @@ def run_full_pipeline(n, d, seed, frac_interventions, run_baselines):
     save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
 
     if run_baselines:
-        try:
-            B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
-            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
-        except ValueError:
-            print("Skipping DCDI as it failed to scale.")
+        #try:
+        #    B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
+        #    save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdi")
+        #except ValueError:
+        #    print("Skipping DCDI as it failed to scale.")
 
         B_pred = run_dcdfg(X_df, B_true, wandb_config_dict)
-        save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
+        save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdfg")
 
 
 if __name__ == "__main__":
