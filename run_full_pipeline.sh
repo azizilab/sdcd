@@ -13,7 +13,7 @@ do
     for seed in "${seed_vals[@]}"
     do
         # Run the Python script with the current values of d and seed
-        python3 full_pipeline_main.py --d $d --seed $seed
+        python3 full_pipeline_main.py --d $d --seed $seed --model all
 
         # Add a newline for separation between iterations
         echo ""

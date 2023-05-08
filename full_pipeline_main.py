@@ -341,14 +341,17 @@ def save_B_pred(
 @click.option("--d", type=int, help="Number of dimensions")
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
-@click.option("--run_baselines", default=True, help="Run baselines")
-def run_full_pipeline(n, d, seed, frac_interventions, run_baselines):
+@click.option(
+    "--model", default="all", help="Model to run. Choices are [all, sdcdi, dcdi, dcdfg]"
+)
+def run_full_pipeline(n, d, seed, frac_interventions, model):
     X_df, B_true, wandb_config_dict = generate_dataset(n, d, seed, frac_interventions)
 
-    B_pred = run_sdcdi(X_df, B_true, wandb_config_dict)
-    save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
+    if model == "all" or model == "sdcdi":
+        B_pred = run_sdcdi(X_df, B_true, wandb_config_dict)
+        save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
 
-    if run_baselines:
+    if model == "all" or model == "dcdi":
         try:
             B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
             save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdi")
@@ -356,6 +359,7 @@ def run_full_pipeline(n, d, seed, frac_interventions, run_baselines):
             print("Skipping DCDI as it failed to scale.")
             wandb.finish()
 
+    if model == "all" or model == "dcdfg":
         B_pred = run_dcdfg(X_df, B_true, wandb_config_dict)
         save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdfg")
 
