@@ -250,9 +250,12 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
 
     train_time = time.time() - start
 
-    model.module.threshold()
     pred_adj = np.array(model.module.get_w_adj().detach().cpu().numpy() > 0, dtype=int)
-    metrics_dict = compute_metrics(pred_adj, B_true)
+    model.module.threshold()
+    pred_adj_thresh = np.array(
+        model.module.get_w_adj().detach().cpu().numpy() > 0, dtype=int
+    )
+    metrics_dict = compute_metrics(pred_adj_thresh, B_true)
     metrics_dict["train_time"] = train_time
 
     wandb.log(metrics_dict)
@@ -273,14 +276,6 @@ def run_dcdfg(X_df, B_true, wandb_config_dict):
     )
 
     start = time.time()
-    model = MLPGaussianModel(
-        B_true.shape[0],
-        2,
-        16,
-        lr_init=1e-3,
-        reg_coeff=0.1,
-        constraint_mode="exp",
-    )
     model = MLPModuleGaussianModel(
         B_true.shape[0],
         2,
@@ -317,14 +312,16 @@ def run_dcdfg(X_df, B_true, wandb_config_dict):
     train_time = time.time() - start
 
     model.module.threshold()
-    pred_adj = np.array(model.module.weight_mask.detach().cpu().numpy() > 0, dtype=int)
-    metrics_dict = compute_metrics(pred_adj, B_true)
+    pred_adj_thresh = np.array(
+        model.module.weight_mask.detach().cpu().numpy() > 0, dtype=int
+    )
+    metrics_dict = compute_metrics(pred_adj_thresh, B_true)
     metrics_dict["train_time"] = train_time
 
     wandb.log(metrics_dict)
     wandb.finish()
 
-    return pred_adj
+    return pred_adj_thresh
 
 
 def save_B_pred(
@@ -352,11 +349,12 @@ def run_full_pipeline(n, d, seed, frac_interventions, run_baselines):
     save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
 
     if run_baselines:
-        #try:
-        #    B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
-        #    save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdi")
-        #except ValueError:
-        #    print("Skipping DCDI as it failed to scale.")
+        try:
+            B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdi")
+        except ValueError:
+            print("Skipping DCDI as it failed to scale.")
+            wandb.finish()
 
         B_pred = run_dcdfg(X_df, B_true, wandb_config_dict)
         save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdfg")
