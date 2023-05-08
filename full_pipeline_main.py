@@ -250,7 +250,7 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
 
     train_time = time.time() - start
 
-    pred_adj = np.array(model.module.get_w_adj().detach().cpu().numpy() > 0, dtype=int)
+    pred_adj = model.module.get_w_adj().detach().cpu().numpy()
     model.module.threshold()
     pred_adj_thresh = np.array(
         model.module.get_w_adj().detach().cpu().numpy() > 0, dtype=int
@@ -346,6 +346,7 @@ def save_B_pred(
 )
 def run_full_pipeline(n, d, seed, frac_interventions, model):
     X_df, B_true, wandb_config_dict = generate_dataset(n, d, seed, frac_interventions)
+    save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
     if model == "all" or model == "sdcdi":
         B_pred = run_sdcdi(X_df, B_true, wandb_config_dict)
