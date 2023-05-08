@@ -1,5 +1,7 @@
 external/*
 __pycache__/*
+**/__pycache__/*
 notebooks/.ipynb_checkpoints/*.ipynb
 wandb/*
 saved_mtxs/*
+saved_mtxs_old/*

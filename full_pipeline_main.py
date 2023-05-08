@@ -1,3 +1,6 @@
+import os
+import time
+
 import click
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,7 +23,8 @@ from train_utils import (
     compute_metrics,
 )
 
-from third_party.dcdi.model import MLPGaussianModel, MLPModuleGaussianModel
+from third_party.dcdi.model import MLPGaussianModel
+from third_party.dcdfg.model import MLPModuleGaussianModel
 from third_party.callback import (
     AugLagrangianCallback,
     ConditionalEarlyStopping,
@@ -28,8 +32,7 @@ from third_party.callback import (
 )
 
 
-def generate_dataset(seed, frac_interventions):
-    n, d = 50, 50
+def generate_dataset(n, d, seed, frac_interventions):
     maintain_dataset_size = True
     n_edges = 5 * d
     knockdown_eff = 1.0
@@ -79,15 +82,15 @@ def run_sdcdi(X_df, B_true, wandb_config_dict):
         "n_epochs_check": n_epochs_check,
     }
 
-    mask_threshold = 0.1
+    mask_threshold = 0.2
 
     learning_rate = 2e-2
 
     alpha = 5e-3
     beta = 0.005
-    n_epochs = 5_000
+    n_epochs = 3_000
     # gamma = 10
-    gammas = list(np.linspace(0, 500, n_epochs))
+    gammas = list(np.linspace(0, 300, n_epochs))
     threshold = 0.3
     freeze_gamma_at_dag = True
     freeze_gamma_threshold = 0.5
@@ -124,6 +127,7 @@ def run_sdcdi(X_df, B_true, wandb_config_dict):
         },
     )
 
+    start = time.time()
     # No DAG prescreen
     if use_prescreen:
         ps_model = AutoEncoderLayers(
@@ -152,7 +156,7 @@ def run_sdcdi(X_df, B_true, wandb_config_dict):
         mask = (
             ps_model.get_adjacency_matrix().detach().numpy() > mask_threshold
         ).astype(int)
-        np.save(f"saved_mtxs/mask_{name}.npy", mask)
+        # np.save(f"saved_mtxs/mask_{name}.npy", mask)
         print(
             f"Recall of mask: {(B_true.astype(bool) & mask.astype(bool)).sum() / B_true.sum()}"
         )
@@ -187,11 +191,16 @@ def run_sdcdi(X_df, B_true, wandb_config_dict):
         B_true=B_true,
         start_wandb_epoch=prescreen_config["n_epochs"] if use_prescreen else 0,
     )
-    np.save(
-        f"saved_mtxs/final_{name}.npy", model.get_adjacency_matrix().detach().numpy()
-    )
+    train_time = time.time() - start
 
-    wandb.exit()
+    pred_adj = model.get_adjacency_matrix().detach().numpy()
+    metrics_dict = compute_metrics(pred_adj, B_true)
+    metrics_dict["train_time"] = train_time
+
+    wandb.log(metrics_dict)
+    wandb.finish()
+
+    return pred_adj
 
 
 def run_dcdi(X_df, B_true, wandb_config_dict):
@@ -204,6 +213,8 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
     train_dataset, val_dataset = torch.utils.data.random_split(
         dataset, [int(0.8 * len(dataset)), len(dataset) - int(0.8 * len(dataset))]
     )
+
+    start = time.time()
     model = MLPGaussianModel(
         B_true.shape[0],
         2,
@@ -235,11 +246,18 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
         torch.utils.data.DataLoader(train_dataset, batch_size=128, num_workers=4),
         torch.utils.data.DataLoader(val_dataset, num_workers=8, batch_size=256),
     )
+
+    train_time = time.time() - start
+
     model.module.threshold()
     pred_adj = np.array(model.module.weight_mask.detach().cpu().numpy() > 0, dtype=int)
     metrics_dict = compute_metrics(pred_adj, B_true)
+    metrics_dict["train_time"] = train_time
+
     wandb.log(metrics_dict)
     wandb.finish()
+
+    return pred_adj
 
 
 def run_dcdfg(X_df, B_true, wandb_config_dict):
@@ -252,6 +270,8 @@ def run_dcdfg(X_df, B_true, wandb_config_dict):
     train_dataset, val_dataset = torch.utils.data.random_split(
         dataset, [int(0.8 * len(dataset)), len(dataset) - int(0.8 * len(dataset))]
     )
+
+    start = time.time()
     model = MLPGaussianModel(
         B_true.shape[0],
         2,
@@ -292,29 +312,53 @@ def run_dcdfg(X_df, B_true, wandb_config_dict):
         torch.utils.data.DataLoader(train_dataset, batch_size=128, num_workers=4),
         torch.utils.data.DataLoader(val_dataset, num_workers=8, batch_size=256),
     )
+
+    train_time = time.time() - start
+
     model.module.threshold()
     pred_adj = np.array(model.module.weight_mask.detach().cpu().numpy() > 0, dtype=int)
     metrics_dict = compute_metrics(pred_adj, B_true)
+    metrics_dict["train_time"] = train_time
+
     wandb.log(metrics_dict)
     wandb.finish()
 
+    return pred_adj
+
+
+def save_B_pred(
+    B_pred, n, d, seed, frac_interventions, method_name, dirname="saved_mtxs/"
+):
+    filename = f"B_pred_{n}_{d}_{seed}_{frac_interventions}_{method_name}.npy"
+    # check if dir exists
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
+    filepath = os.path.join(dirname, filename)
+    np.save(filepath, B_pred)
+
 
 @click.command()
+@click.option("--n", default=50, help="Per interventional subset")
+@click.option("--d", type=int, help="Number of dimensions")
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option("--run_baselines", default=True, help="Run baselines")
-def run_full_pipeline(seed, frac_interventions, run_baselines):
-    X_df, B_true, wandb_config_dict = generate_dataset(seed, frac_interventions)
+def run_full_pipeline(n, d, seed, frac_interventions, run_baselines):
+    X_df, B_true, wandb_config_dict = generate_dataset(n, d, seed, frac_interventions)
 
-    run_sdcdi(X_df, B_true, wandb_config_dict)
+    B_pred = run_sdcdi(X_df, B_true, wandb_config_dict)
+    save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
 
     if run_baselines:
         try:
-            run_dcdi(X_df, B_true, wandb_config_dict)
+            B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
         except ValueError:
             print("Skipping DCDI as it failed to scale.")
 
-        run_dcdfg(X_df, B_true, wandb_config_dict)
+        B_pred = run_dcdfg(X_df, B_true, wandb_config_dict)
+        save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
 
 
 if __name__ == "__main__":
