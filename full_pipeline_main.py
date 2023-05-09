@@ -154,6 +154,10 @@ def run_sdcdi(X_df, B_true, wandb_config_dict):
         )
 
         # Create mask for main algo
+        # np.save(
+        #     f"saved_mtxs/premask_{name}.npy",
+        #     ps_model.get_adjacency_matrix().detach().numpy(),
+        # )
         mask = (
             ps_model.get_adjacency_matrix().detach().numpy() > mask_threshold
         ).astype(int)
