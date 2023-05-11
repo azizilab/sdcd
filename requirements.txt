@@ -6,3 +6,4 @@ torch
 python-igraph
 matplotlib
 seaborn
+scikit-learn
