@@ -62,7 +62,7 @@ def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
     return X_df, B_true, wandb_config_dict
 
 
-def run_sdcdi(X_df, B_true, wandb_config_dict):
+def run_scd(X_df, B_true, wandb_config_dict):
     batch_size = 256
     data_loader = create_intervention_dataloader(X_df, batch_size=batch_size)
 
@@ -350,7 +350,7 @@ def save_B_pred(
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
-    "--model", default="all", help="Model to run. Choices are [all, sdcdi, dcdi, dcdfg]"
+    "--model", default="all", help="Model to run. Choices are [all, scd, dcdi, dcdfg]"
 )
 def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model):
     X_df, B_true, wandb_config_dict = generate_dataset(
@@ -358,9 +358,9 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model):
     )
     save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
-    if model == "all" or model == "sdcdi":
-        B_pred = run_sdcdi(X_df, B_true, wandb_config_dict)
-        save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcdi")
+    if model == "all" or model == "scd":
+        B_pred = run_scd(X_df, B_true, wandb_config_dict)
+        save_B_pred(B_pred, n, d, seed, frac_interventions, "scd")
 
     if model == "all" or model == "dcdi":
         try:
