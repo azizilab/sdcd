@@ -7,3 +7,5 @@ saved_mtxs/*
 saved_mtxs_old/*
 .DS_Store
 notebooks/.DS_Store
+**.pyc
+full-pipeline-simulation-DCDI

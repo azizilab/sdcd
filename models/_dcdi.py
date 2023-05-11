@@ -61,7 +61,7 @@ class DCDI(BaseModel):
         d = sample_batch[0].shape[1]
 
         start = time.time()
-        self._model_kwargs = _DEFAULT_MODEL_KWARGS.update(model_kwargs)
+        self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
         self._model = MLPGaussianModel(
             d,
             **self._model_kwargs,
@@ -75,8 +75,6 @@ class DCDI(BaseModel):
             mode="min",
         )
         trainer = pl.Trainer(
-            accelerator="gpu",
-            gpus=1,
             max_epochs=60000,
             logger=WandbLogger(project=wandb_project, log_model=log_wandb, reinit=True),
             val_check_interval=1.0,

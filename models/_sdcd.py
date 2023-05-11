@@ -29,7 +29,7 @@ _DEFAULT_STAGE1_KWARGS = {
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 2e-2,
     "n_epochs": 3_000,
-    "alphas": 5e-3,
+    "alpha": 5e-3,
     "max_gamma": 300,
     "beta": 5e-3,
     "freeze_gamma_at_dag": True,
@@ -44,8 +44,8 @@ class SDCD(BaseModel):
     def __init__(self):
         super().__init__()
         self._model_kwargs = None
-        self._adj_matrix = None
-        self._adj_matrix_thresh = None
+        self._stage1_kwargs = None
+        self._stage2_kwargs = None
 
     def train(
         self,
@@ -56,6 +56,7 @@ class SDCD(BaseModel):
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
+        verbose: bool = False,
     ):
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}
@@ -70,8 +71,10 @@ class SDCD(BaseModel):
         assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
         d = sample_batch[0].shape[1]
 
-        self._stage1_kwargs = _DEFAULT_STAGE1_KWARGS.update(stage1_kwargs or {})
-        self._stage2_kwargs = _DEFAULT_STAGE2_KWARGS.update(stage2_kwargs or {})
+        self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
+        self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
+
+        self.threshold = self._stage2_kwargs["threshold"]
 
         if log_wandb:
             wandb.init(
@@ -87,7 +90,7 @@ class SDCD(BaseModel):
 
         start = time.time()
         # Stage 1: Pre-selection
-        ps_model = AutoEncoderLayers(
+        self._ps_model = AutoEncoderLayers(
             d,
             [10, 1],
             nn.Sigmoid(),
@@ -96,23 +99,27 @@ class SDCD(BaseModel):
             dag_penalty_flavor="none",
         )
         ps_optimizer = torch.optim.Adam(
-            ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
+            self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
         )
 
-        _train(
-            ps_model,
+        ps_kwargs = {
+            **self._stage1_kwargs,
+            "threshold": self.threshold,
+        }
+        self._ps_model = _train(
+            self._ps_model,
             dataloader,
             ps_optimizer,
-            stage1_kwargs,
-            log_wandb=True,
-            print_graph=True,
+            ps_kwargs,
+            log_wandb=log_wandb,
+            print_graph=verbose,
             B_true=B_true,
         )
 
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
         mask = (
-            ps_model.get_adjacency_matrix().detach().numpy() > mask_threshold
+            self._ps_model.get_adjacency_matrix().detach().numpy() > mask_threshold
         ).astype(int)
         if B_true is not None:
             print(
@@ -124,7 +131,7 @@ class SDCD(BaseModel):
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
-        model = AutoEncoderLayers(
+        self._model = AutoEncoderLayers(
             d,
             [10, 1],
             nn.Sigmoid(),
@@ -134,16 +141,16 @@ class SDCD(BaseModel):
             mask=mask,
         )
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=self._stage2_kwargs["learning_rate"]
+            self._model.parameters(), lr=self._stage2_kwargs["learning_rate"]
         )
 
-        _train(
-            model,
+        self._model = _train(
+            self._model,
             dataloader,
             optimizer,
             self._stage2_kwargs,
-            log_wandb=True,
-            print_graph=True,
+            log_wandb=log_wandb,
+            print_graph=verbose,
             B_true=B_true,
             start_wandb_epoch=self._stage1_kwargs["n_epochs"],
         )
@@ -175,8 +182,8 @@ def _train(
     gammas = np.linspace(0, max_gamma, n_epochs)
     beta = config["beta"]
     threshold = config["threshold"]
-    freeze_gamma_at_dag = config["freeze_gamma_at_dag"]
-    freeze_gamma_threshold = config["freeze_gamma_threshold"]
+    freeze_gamma_at_dag = config.get("freeze_gamma_at_dag", False)
+    freeze_gamma_threshold = config.get("freeze_gamma_threshold", None)
     n_epochs_check = config["n_epochs_check"]
 
     is_prescreen = model.dag_penalty_flavor == "none"
