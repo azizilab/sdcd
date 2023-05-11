@@ -5,3 +5,5 @@ notebooks/.ipynb_checkpoints/*.ipynb
 wandb/*
 saved_mtxs/*
 saved_mtxs_old/*
+.DS_Store
+notebooks/.DS_Store
