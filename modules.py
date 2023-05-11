@@ -97,7 +97,7 @@ class DispatcherLayer(nn.Module):
             self.mask = torch.tensor(mask.astype(int), requires_grad=False)
 
         if mask is not None and warmstart:
-            warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat((1,1,hidden_dim))
+            warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat((1, 1, hidden_dim))
             self._weight = nn.Parameter(warmstart_tensor)
         else:
             self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
@@ -131,7 +131,14 @@ class DispatcherLayer(nn.Module):
         return torch.linalg.vector_norm(self.weight, dim=2, ord=self.adjacency_p)
 
     def __repr__(self):
-        return f"DispatcherLayer(in_dim={self.in_dim}, out_dim={self.out_dim}, hidden_dim={self.hidden_dim}, adjacency_p={self.adjacency_p})"
+        return (
+            f"DispatcherLayer("
+            f"in_dim={self.in_dim}, "
+            f"out_dim={self.out_dim}, "
+            f"hidden_dim={self.hidden_dim}, "
+            f"adjacency_p={self.adjacency_p}"
+            f")"
+        )
 
 
 class AutoEncoderLayers(nn.Module):
@@ -215,11 +222,14 @@ class AutoEncoderLayers(nn.Module):
         for layer in self.layers:
             layer.reset_parameters()
 
-    def reconstruction_loss(self, x, interventions = None):
+    def reconstruction_loss(self, x, interventions=None):
         x_mean = self(x).squeeze(2)
         if interventions is not None:
             interventions[torch.where(interventions == -1)] = x.shape[1]
-            interventions_oh = nn.functional.one_hot(interventions.squeeze(), num_classes = x.shape[1] + 1)[:, :-1] # cutoff obs
+            interventions_oh = nn.functional.one_hot(
+                interventions.squeeze(), num_classes=x.shape[1] + 1
+            )
+            interventions_oh = interventions_oh[:, :-1]  # cutoff obs
             mask_interventions_oh = 1 - interventions_oh
             nll = (mask_interventions_oh * (x_mean - x) ** 2).sum()
         else:
