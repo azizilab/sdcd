@@ -249,7 +249,16 @@ class AutoEncoderLayers(nn.Module):
         h_val = (grad.detach() * A).sum()
         return h_val
 
-    def loss(self, x, alpha=1.0, beta=1.0, gamma=1.0, n_observations=None, interventions=None):
+    def loss(
+        self,
+        x,
+        alpha=1.0,
+        beta=1.0,
+        gamma=1.0,
+        n_observations=None,
+        interventions=None,
+        return_detailed_losses=False,
+    ):
         nll = self.reconstruction_loss(x, interventions=interventions)
         l1_reg = alpha * self.l1_reg_dispatcher()  # * n_obs_norm
         l2_reg = beta * self.l2_reg_all_weights()  # * n_obs_norm
@@ -259,14 +268,13 @@ class AutoEncoderLayers(nn.Module):
         elif self.dag_penalty_flavor in ("scc", "power_iteration"):
             dag_reg = self.dag_reg_power_grad()
         elif self.dag_penalty_flavor == "none":
-            dag_reg = 0
-        obj = nll + l1_reg + l2_reg + gamma * dag_reg
-        # if np.random.rand() < 0.01:
-        #     print(
-        #         f"nll: {nll.item():.3f}, l1: {l1_reg.item():.3f}, l2: {l2_reg.item():.3f}, dag: {dag_reg.item():.3f}"
-        #     )
+            dag_reg = torch.zeros(1)
+        total_loss = nll + l1_reg + l2_reg + gamma * dag_reg
 
-        return obj
+        if return_detailed_losses:
+            return total_loss, {"nll": nll, "l1": l1_reg, "l2": l2_reg, "dag": dag_reg}
+        else:
+            return total_loss
 
 
 def normalize(v):

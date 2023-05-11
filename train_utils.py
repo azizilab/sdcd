@@ -63,13 +63,23 @@ def train(model, data_loader, optimizer, config, freeze_gamma_at_dag=False, log_
             gamma = gamma_cap
 
         epoch_loss = 0
+        epoch_loss_details = []
         for batch in data_loader:
             X_batch, interventions_batch = batch
             optimizer.zero_grad()
-            loss = model.loss(X_batch, alpha, beta, gamma, n_observations, interventions = interventions_batch)
+            loss, loss_details = model.loss(
+                X_batch,
+                alpha,
+                beta,
+                gamma,
+                n_observations,
+                interventions=interventions_batch,
+                return_detailed_losses=True,
+            )
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
+            epoch_loss_details.append(loss_details)
 
         if epoch % n_epochs_check == 0:
             B_pred = model.get_adjacency_matrix().detach().numpy()
@@ -97,6 +107,9 @@ def train(model, data_loader, optimizer, config, freeze_gamma_at_dag=False, log_
                     precision = "na"
 
                 n_edges_pred = (B_pred > 0.3).sum()
+                epoch_loss_details = {k: sum(d[k].item() for d in epoch_loss_details) for k in epoch_loss_details[0]}
+                epoch_loss_details = {k: v / len(data_loader) for k, v in epoch_loss_details.items()}
+
                 wandb.log(
                     {
                         "epoch": epoch + start_wandb_epoch,
@@ -108,6 +121,7 @@ def train(model, data_loader, optimizer, config, freeze_gamma_at_dag=False, log_
                         "gamma": gamma,
                         "alpha": alpha,
                         "is_prescreen": int(is_prescreen),
+                        **epoch_loss_details,
                     }
                 )
 
