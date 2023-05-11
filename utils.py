@@ -102,16 +102,16 @@ def get_leading_left_and_right_eigenvectors(A):
     return left_eigenvector, right_eigenvector
 
 
-def print_graph_from_weights(d, B_pred, B_true, thresholds):
+def print_graph_from_weights(d, B_pred, B_true, thresholds, max_parents=50, max_nodes=50):
     B_true_square = B_true @ B_true
-    for i in range(d):
+    for i in range(min(d, max_nodes)):
         parents_weights = B_pred[:, i]
         parents = sorted(range(d), key=lambda j: parents_weights[j], reverse=True)
         parents_str = []
         for t in thresholds:
             if parents_weights[parents[0]] < t:
                 parents_str.append("|")
-        for idx, j in enumerate(parents):
+        for idx, j in enumerate(parents[:max_parents]):
             # print the parent in orange if it is actually a child of the node
             if B_true[j, i]:
                 parents_str.append(f"\033[92m{j}\033[0m")
