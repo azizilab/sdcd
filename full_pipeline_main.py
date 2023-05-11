@@ -23,8 +23,8 @@ from train_utils import (
     compute_metrics,
 )
 
-from third_party.dcdi.model import MLPGaussianModel
-from third_party.dcdfg.model import MLPModuleGaussianModel
+from third_party.dcdi import DCDI
+from third_party.dcdfg import DCDFG
 from third_party.callback import (
     AugLagrangianCallback,
     ConditionalEarlyStopping,
@@ -221,7 +221,7 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
     )
 
     start = time.time()
-    model = MLPGaussianModel(
+    model = DCDI(
         B_true.shape[0],
         2,
         16,
@@ -281,7 +281,7 @@ def run_dcdfg(X_df, B_true, wandb_config_dict):
     )
 
     start = time.time()
-    model = MLPModuleGaussianModel(
+    model = DCDFG(
         B_true.shape[0],
         2,
         20,
