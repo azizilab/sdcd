@@ -11,7 +11,7 @@ from train_utils import (
     subset_interventions,
 )
 
-from models import SDCD, DCDI, DCDFG
+from models import SDCI, DCDI, DCDFG
 
 
 def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
@@ -44,9 +44,9 @@ def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
     return X_df, B_true, wandb_config_dict
 
 
-def run_sdcd(X_df, B_true, wandb_config_dict):
+def run_sdci(X_df, B_true, wandb_config_dict):
     dataset = create_intervention_dataset(X_df, regime_format=False)
-    model = SDCD()
+    model = SDCI()
     model.train(
         dataset,
         log_wandb=True,
@@ -120,7 +120,7 @@ def save_B_pred(
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
-    "--model", default="all", help="Model to run. Choices are [all, sdcd, dcdi, dcdfg]"
+    "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg]"
 )
 def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model):
     X_df, B_true, wandb_config_dict = generate_dataset(
@@ -128,9 +128,9 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model):
     )
     save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
-    if model == "all" or model == "sdcd":
-        B_pred = run_sdcd(X_df, B_true, wandb_config_dict)
-        save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcd")
+    if model == "all" or model == "sdci":
+        B_pred = run_sdci(X_df, B_true, wandb_config_dict)
+        save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
 
     if model == "all" or model == "dcdi":
         try:

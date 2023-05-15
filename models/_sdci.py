@@ -40,7 +40,7 @@ _DEFAULT_STAGE2_KWARGS = {
 }
 
 
-class SDCD(BaseModel):
+class SDCI(BaseModel):
     def __init__(self):
         super().__init__()
         self._model_kwargs = None
@@ -51,7 +51,7 @@ class SDCD(BaseModel):
         self,
         dataset: Dataset,
         log_wandb: bool = False,
-        wandb_project: str = "SDCD",
+        wandb_project: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
@@ -62,7 +62,7 @@ class SDCD(BaseModel):
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
-                name="SDCD",
+                name="SDCI",
                 config=wandb_config_dict,
             )
         batch_size = 256
@@ -79,7 +79,7 @@ class SDCD(BaseModel):
         if log_wandb:
             wandb.init(
                 project=wandb_project,
-                name="SDCD",
+                name="SDCI",
                 config={
                     "batch_size": batch_size,
                     "stage1_kwargs": self._stage1_kwargs,

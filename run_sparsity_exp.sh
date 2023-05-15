@@ -11,7 +11,7 @@ do
     for seed in "${seed_vals[@]}"
     do
         # Run the Python script with the current values of d and seed
-    python3 full_pipeline_main.py --d 50 --n_edges_per_d $nd --seed $seed --model sdcd
+    python3 full_pipeline_main.py --d 50 --n_edges_per_d $nd --seed $seed --model sdci
 
         # Add a newline for separation between iterations
         echo ""
