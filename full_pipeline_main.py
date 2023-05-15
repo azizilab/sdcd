@@ -52,6 +52,7 @@ def run_sdcd(X_df, B_true, wandb_config_dict):
         log_wandb=True,
         wandb_project="full-pipeline-simulation",
         wandb_config_dict=wandb_config_dict,
+        B_true=B_true,
     )
     metrics_dict = model.compute_metrics(B_true)
     metrics_dict["train_time"] = model._train_runtime_in_sec
