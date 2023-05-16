@@ -7,6 +7,8 @@ import torch
 import scipy.stats
 import pandas as pd
 
+_THRESHOLDS = [0.5, 0.3, 0.1]
+
 
 def set_random_seed_all(seed=0):
     random.seed(seed)
@@ -102,7 +104,7 @@ def get_leading_left_and_right_eigenvectors(A):
     return left_eigenvector, right_eigenvector
 
 
-def print_graph_from_weights(d, B_pred, B_true, thresholds, max_parents=50, max_nodes=50):
+def print_graph_from_weights(d, B_pred, B_true, thresholds=_THRESHOLDS, max_parents=50, max_nodes=50):
     B_true_square = B_true @ B_true
     for i in range(min(d, max_nodes)):
         parents_weights = B_pred[:, i]

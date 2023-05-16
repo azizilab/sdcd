@@ -323,7 +323,7 @@ class SCCPowerIteration:
         for i in range(n_components):
             scc = np.where(labels == i)[0]
             self.scc_list.append(scc)
-        print(len(self.scc_list))
+        # print(len(self.scc_list))
 
     def power_iteration(self, n_iter=5):
         matrix = self.get_matrix() ** 2
