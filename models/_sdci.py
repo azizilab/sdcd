@@ -56,15 +56,9 @@ class SDCI(BaseModel):
         wandb_config_dict: Optional[dict] = None,
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
-        stage2_kwargs: Optional[dict] = None, verbose: bool = False,
+        stage2_kwargs: Optional[dict] = None,
+        verbose: bool = False,
     ):
-        if log_wandb:
-            wandb_config_dict = wandb_config_dict or {}
-            wandb.init(
-                project=wandb_project,
-                name="SDCI",
-                config=wandb_config_dict,
-            )
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         sample_batch = next(iter(dataloader))
         assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
@@ -76,6 +70,7 @@ class SDCI(BaseModel):
         self.threshold = self._stage2_kwargs["threshold"]
 
         if log_wandb:
+            wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
                 name="SDCI",
