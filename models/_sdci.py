@@ -50,13 +50,13 @@ class SDCI(BaseModel):
     def train(
         self,
         dataset: Dataset,
+        batch_size: int = 256,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
-        stage2_kwargs: Optional[dict] = None,
-        verbose: bool = False,
+        stage2_kwargs: Optional[dict] = None, verbose: bool = False,
     ):
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}
@@ -65,7 +65,6 @@ class SDCI(BaseModel):
                 name="SDCI",
                 config=wandb_config_dict,
             )
-        batch_size = 256
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         sample_batch = next(iter(dataloader))
         assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
