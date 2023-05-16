@@ -122,27 +122,34 @@ def save_B_pred(
 @click.option(
     "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg]"
 )
-def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model):
+@click.option(
+    "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
+)
+def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs):
     X_df, B_true, wandb_config_dict = generate_dataset(
         n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d
     )
-    save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
+    if save_mtxs:
+        save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
     if model == "all" or model == "sdci":
         B_pred = run_sdci(X_df, B_true, wandb_config_dict)
-        save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
+        if save_mtxs:
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
 
     if model == "all" or model == "dcdi":
         try:
             B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
-            save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdi")
+            if save_mtxs:
+                save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdi")
         except ValueError:
             print("Skipping DCDI as it failed to scale.")
             wandb.finish()
 
     if model == "all" or model == "dcdfg":
         B_pred = run_dcdfg(X_df, B_true, wandb_config_dict)
-        save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdfg")
+        if save_mtxs:
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdfg")
 
 
 if __name__ == "__main__":

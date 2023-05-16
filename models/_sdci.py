@@ -28,7 +28,7 @@ _DEFAULT_STAGE1_KWARGS = {
 }
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 2e-2,
-    "n_epochs": 3_000,
+    "n_epochs": 2_000,
     "alpha": 5e-3,
     "max_gamma": 300,
     "beta": 5e-3,
@@ -50,7 +50,7 @@ class SDCI(BaseModel):
     def train(
         self,
         dataset: Dataset,
-        batch_size: int = 256,
+        batch_size: int = 512,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
