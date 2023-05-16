@@ -77,7 +77,9 @@ class DCDFG(BaseModel):
         )
         trainer = pl.Trainer(
             max_epochs=60000,
-            logger=WandbLogger(project=wandb_project, log_model=log_wandb, reinit=True),
+            logger=WandbLogger(project=wandb_project, reinit=True)
+            if log_wandb
+            else False,
             val_check_interval=1.0,
             callbacks=[
                 AugLagrangianCallback(),
