@@ -99,7 +99,7 @@ class DCDI(BaseModel):
         self._adj_matrix = self._model.module.get_w_adj().detach().cpu().numpy()
         self._model.module.threshold()
         self._adj_matrix_thresh = np.array(
-            self._model.module.get_w_adj().detach().cpu().numpy() > 0, dtype=int
+            self._model.module.adjacency.detach().cpu().numpy() > 0, dtype=int
         )
 
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
