@@ -50,6 +50,7 @@ class SDCI(BaseModel):
     def train(
         self,
         dataset: Dataset,
+        ps_batch_size: int = 256,
         batch_size: int = 512,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
@@ -59,7 +60,7 @@ class SDCI(BaseModel):
         stage2_kwargs: Optional[dict] = None,
         verbose: bool = False,
     ):
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        ps_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         sample_batch = next(iter(dataloader))
         assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
         d = sample_batch[0].shape[1]
@@ -72,37 +73,37 @@ class SDCI(BaseModel):
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
-                project=wandb_project,
-                name="SDCI",
-                config={
-                    "batch_size": batch_size,
-                    "stage1_kwargs": self._stage1_kwargs,
-                    "stage2_kwargs": self._stage2_kwargs,
-                    **wandb_config_dict,
-                },
-            )
+                    project=wandb_project,
+                    name="SDCI",
+                    config={
+                        "batch_size": batch_size,
+                        "stage1_kwargs": self._stage1_kwargs,
+                        "stage2_kwargs": self._stage2_kwargs,
+                        **wandb_config_dict,
+                        },
+                    )
 
         start = time.time()
         # Stage 1: Pre-selection
         self._ps_model = AutoEncoderLayers(
-            d,
-            [10, 1],
-            nn.Sigmoid(),
-            shared_layers=False,
-            adjacency_p=2.0,
-            dag_penalty_flavor="none",
-        )
+                d,
+                [10, 1],
+                nn.Sigmoid(),
+                shared_layers=False,
+                adjacency_p=2.0,
+                dag_penalty_flavor="none",
+                )
         ps_optimizer = torch.optim.Adam(
-            self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
-        )
+                self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
+                )
 
         ps_kwargs = {
-            **self._stage1_kwargs,
-            "threshold": self.threshold,
-        }
+                **self._stage1_kwargs,
+                "threshold": self.threshold,
+                }
         self._ps_model = _train(
-            self._ps_model,
-            dataloader,
+                self._ps_model,
+                ps_dataloader,
             ps_optimizer,
             ps_kwargs,
             log_wandb=log_wandb,
@@ -138,6 +139,7 @@ class SDCI(BaseModel):
             self._model.parameters(), lr=self._stage2_kwargs["learning_rate"]
         )
 
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         self._model = _train(
             self._model,
             dataloader,
