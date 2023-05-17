@@ -94,7 +94,7 @@ class DispatcherLayer(nn.Module):
 
         self.mask = torch.ones((in_dim, out_dim), requires_grad=False)
         if mask is not None and not warmstart:
-            self.mask = torch.tensor(mask.astype(int), requires_grad=False)
+            self.mask = torch.tensor(mask, requires_grad=False).float()
 
         if mask is not None and warmstart:
             warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat((1, 1, hidden_dim))
@@ -282,7 +282,12 @@ class AutoEncoderLayers(nn.Module):
         total_loss = nll + l1_reg + l2_reg + gamma * dag_reg
 
         if return_detailed_losses:
-            return total_loss, {"nll": nll, "l1": l1_reg, "l2": l2_reg, "dag": dag_reg}
+            return total_loss, {
+                "nll": nll.detach(),
+                "l1": l1_reg.detach(),
+                "l2": l2_reg.detach(),
+                "dag": dag_reg.detach(),
+            }
         else:
             return total_loss
 
@@ -292,7 +297,7 @@ def normalize(v):
 
 
 class SCCPowerIteration:
-    def __init__(self, model: "AutoEncoderLayers", update_scc_freq=100):
+    def __init__(self, model: "AutoEncoderLayers", update_scc_freq=1000):
         self.d = model.in_dim
         self.update_scc_freq = update_scc_freq
         self.get_matrix = model.get_adjacency_matrix
@@ -329,15 +334,24 @@ class SCCPowerIteration:
         matrix = self.get_matrix() ** 2
         for scc in self.scc_list:
             if len(scc) == self.d:
-                scc = slice(None)
-            sub_matrix = matrix[scc][:, scc]
-            v = self.v[scc]
-            vt = self.vt[scc]
-            for i in range(n_iter):
-                v = normalize(sub_matrix.mv(v) + 1e-6 * v.sum())
-                vt = normalize(sub_matrix.T.mv(vt) + 1e-6 * vt.sum())
-            self.v[scc] = v
-            self.vt[scc] = vt
+                sub_matrix = matrix
+                v = self.v
+                vt = self.vt
+                for i in range(n_iter):
+                    v = normalize(sub_matrix.mv(v) + 1e-6 * v.sum())
+                    vt = normalize(sub_matrix.T.mv(vt) + 1e-6 * vt.sum())
+                self.v = v
+                self.vt = vt
+
+            else:
+                sub_matrix = matrix[scc][:, scc]
+                v = self.v[scc]
+                vt = self.vt[scc]
+                for i in range(n_iter):
+                    v = normalize(sub_matrix.mv(v) + 1e-6 * v.sum())
+                    vt = normalize(sub_matrix.T.mv(vt) + 1e-6 * vt.sum())
+                self.v[scc] = v
+                self.vt[scc] = vt
 
         return matrix
 
@@ -352,12 +366,15 @@ class SCCPowerIteration:
         gradient = torch.zeros(size=(self.d, self.d))
         for scc in self.scc_list:
             if len(scc) == self.d:
-                scc = slice(None)
-            v = self.v[scc]
-            vt = self.vt[scc]
-            gradient[scc][:, scc] = torch.outer(vt, v) / torch.inner(vt, v)
+                v = self.v
+                vt = self.vt
+                gradient = torch.outer(vt, v) / torch.inner(vt, v)
+            else:
+                v = self.v[scc]
+                vt = self.vt[scc]
+                gradient[scc][:, scc] = torch.outer(vt, v) / torch.inner(vt, v)
 
-        gradient += 100*torch.eye(self.d)
+        gradient += 100 * torch.eye(self.d)
         # gradient += matrix.T
 
         self.n_updates += 1
@@ -399,6 +416,6 @@ class PowerIterationGradient:
         # self.iterate(4, A)
         self.init_eigenvect()
         grad = self.u[:, None] @ self.v[None] / (self.u.dot(self.v) + 1e-6)
-        grad += torch.eye(self.d)
-        grad += A.T
+        # grad += torch.eye(self.d)
+        # grad += A.T
         return grad, A
