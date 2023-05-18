@@ -19,6 +19,7 @@ from .base._base_model import BaseModel
 
 _DEFAULT_STAGE1_KWARGS = {
     "learning_rate": 2e-3,
+    "batch_size": 256,
     "n_epochs": 2_000,
     "alpha": 1e-2,
     "max_gamma": 0,
@@ -28,7 +29,8 @@ _DEFAULT_STAGE1_KWARGS = {
 }
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 2e-2,
-    "n_epochs": 2_000,
+    "batch_size": 512,
+    "n_epochs": 1_000,
     "alpha": 5e-3,
     "max_gamma": 300,
     "beta": 5e-3,
@@ -36,7 +38,7 @@ _DEFAULT_STAGE2_KWARGS = {
     "freeze_gamma_threshold": 0.5,
     "threshold": 0.3,
     "n_epochs_check": 100,
-    "dag_penalty_flavor": "scc",
+    "dag_penalty_flavor": "power_iteration",
 }
 
 
@@ -50,8 +52,6 @@ class SDCI(BaseModel):
     def train(
         self,
         dataset: Dataset,
-        ps_batch_size: int = 256,
-        batch_size: int = 512,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
@@ -60,15 +60,18 @@ class SDCI(BaseModel):
         stage2_kwargs: Optional[dict] = None,
         verbose: bool = False,
     ):
-        ps_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-        sample_batch = next(iter(dataloader))
-        assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
-        d = sample_batch[0].shape[1]
-
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
 
         self.threshold = self._stage2_kwargs["threshold"]
+
+        ps_batch_size = self._stage1_kwargs["batch_size"]
+        batch_size = self._stage2_kwargs["batch_size"]
+
+        ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
+        sample_batch = next(iter(ps_dataloader))
+        assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
+        self.d = sample_batch[0].shape[1]
 
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}
@@ -86,7 +89,7 @@ class SDCI(BaseModel):
         start = time.time()
         # Stage 1: Pre-selection
         self._ps_model = AutoEncoderLayers(
-                d,
+                self.d,
                 [10, 1],
                 nn.Sigmoid(),
                 shared_layers=False,
@@ -102,8 +105,8 @@ class SDCI(BaseModel):
                 "threshold": self.threshold,
                 }
         self._ps_model = _train(
-                self._ps_model,
-                ps_dataloader,
+            self._ps_model,
+            ps_dataloader,
             ps_optimizer,
             ps_kwargs,
             log_wandb=log_wandb,
@@ -127,8 +130,8 @@ class SDCI(BaseModel):
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
         self._model = AutoEncoderLayers(
-            d,
-            [10, 1],
+                self.d,
+                [10, 1],
             nn.Sigmoid(),
             shared_layers=False,
             adjacency_p=2.0,
