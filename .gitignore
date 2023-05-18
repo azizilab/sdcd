@@ -2,10 +2,11 @@ external/*
 __pycache__/*
 **/__pycache__/*
 notebooks/.ipynb_checkpoints/*.ipynb
+notebooks/.DS_Store
+notebooks/wandb/*
 wandb/*
 saved_mtxs/*
 saved_mtxs_old/*
 .DS_Store
-notebooks/.DS_Store
 **.pyc
 full-pipeline-simulation-DCDI
