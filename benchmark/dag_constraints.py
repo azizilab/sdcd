@@ -71,22 +71,33 @@ class MatrixWithGradient(ABC):
     Base class for all the matrices with DAG constraint gradient.
     """
 
-    def __init__(self, matrix, project_norm=0.0, normalization=None, regularization_to_original=0., name_suffix=""):
+    def __init__(
+        self,
+        matrix,
+        anchor_matrix=None,
+        project_norm=0.0,
+        normalization=None,
+        regularization_to_anchor=0.0,
+        name_suffix="",
+    ):
         self.matrix = None
+        self.anchor_matrix = anchor_matrix
         self.original_matrix = None
-        self._gradient = None
         self.d = None
         self.identity = None
+
+        self.regularization_to_anchor = regularization_to_anchor
+        self.project_norm = project_norm
+        self.normalization = normalization
+
+        self._gradient = None
         self.name_suffix = name_suffix
-        self.regularization_to_original = regularization_to_original
 
         self.total_time = None
         self.metrics = None
         self.n_updates = None
         self.reset_tracking()
 
-        self.project_norm = project_norm
-        self.normalization = normalization
         self.set_matrix(matrix)
 
     def reset_tracking(self):
@@ -100,10 +111,11 @@ class MatrixWithGradient(ABC):
 
     def gradient_update(self, lr=5e-3):
         success = True
-        if self.regularization_to_original > 0:
-            l2_gradient = self.regularization_to_original * 2 * (self.matrix - self.original_matrix)
+        if self.regularization_to_anchor > 0:
+            l2_gradient = self.regularization_to_anchor * 2 * (self.matrix - self.anchor_matrix)
         else:
             l2_gradient = 0
+
         start_time = time.time()
         try:
             gradient = self.compute_gradient()
@@ -113,9 +125,9 @@ class MatrixWithGradient(ABC):
             gradient = 0
             print(e)
             success = False
-
         self.matrix = self.relu(self.matrix - lr * (gradient + l2_gradient))
         end_time = time.time()
+
         self.total_time += end_time - start_time
         self._gradient = gradient
         self.n_updates += 1
@@ -147,7 +159,9 @@ class MatrixWithGradient(ABC):
                 break
         self.compute_metrics()
 
-    def train_until_dag(self, test_n_epochs, lr=1e-3, tol=1e-4, max_epochs=100_000, max_time=60 * 5):
+    def train_until_dag(
+        self, test_n_epochs, lr=1e-3, tol=1e-4, max_epochs=100_000, max_time=60 * 5
+    ):
         start = time.time()
         for i in tqdm.tqdm(range(max_epochs)):
             reached_dag = False
@@ -456,111 +470,56 @@ class InverseGradientTorch(MatrixWithGradientTorch):
         return "T-Inv"
 
 
-class TopEigenvalueGradientScipySparse(MatrixWithGradientScipySparse):
-    def __init__(self, matrix, keep_v=True, eigen_transform=None, **kwargs):
-        super().__init__(matrix, **kwargs)
-        self.keep_v = keep_v
-        if eigen_transform is None:
-            eigen_transform = lambda x: x / np.abs(x)
-        self.eigen_transform = eigen_transform
-        self.v0 = None
-        self.v0_T = None
+def normalize(vector):
+    return vector / torch.linalg.vector_norm(vector, ord=2)
 
-    def get_skeleton(self, dtype=np.float32):
-        return (self.matrix > 0).astype(dtype)
+
+class PowerIterationTorch(MatrixWithGradientTorch):
+    def __init__(
+        self,
+        matrix,
+        reset_cache_every=100,
+        n_iterations_init=5,
+        n_iterations_cache=2,
+        identity_penalty=10,
+        transpose_penalty=0,
+        **kwargs,
+    ):
+        super().__init__(matrix, **kwargs)
+        self.reset_cache_every = reset_cache_every
+        self.n_iterations_init = n_iterations_init
+        self.n_iterations_cache = n_iterations_cache
+        self.identity_penalty = identity_penalty
+        self.transpose_penalty = transpose_penalty
+        self.v = None
+        self.v_T = None
+        self.initialize_eigenvector()
+
+    def initialize_eigenvector(self):
+        self.v = torch.ones(self.d) / np.sqrt(self.d)
+        self.v_T = torch.ones(self.d) / np.sqrt(self.d)
+
+    def iterate(self, n_iter=1):
+        matrix = self.get_matrix() + 1e-6
+        for i in range(n_iter):
+            self.v = normalize(matrix @ self.v)
+            self.v_T = normalize(self.v_T @ matrix)
 
     def compute_gradient(self):
-        matrix = self.get_matrix()
-        tol = 1e-7
-        eigen_res = scipy.sparse.linalg.eigs(
-            matrix,
-            k=1,
-            which="LM",
-            v0=self.v0,
-            tol=tol,
-            ncv=5,
-        )
-        eigen_res_T = scipy.sparse.linalg.eigs(
-            matrix.T,
-            k=1,
-            which="LM",
-            v0=self.v0_T,
-            tol=tol,
-            ncv=5,
-        )
-        if self.keep_v:
-            self.v0 = eigen_res[1]
-            self.v0_T = eigen_res_T[1]
+        if self.reset_cache_every > 0 and self.n_updates % self.reset_cache_every == 0:
+            self.initialize_eigenvector()
+            self.iterate(self.n_iterations_init)
+        else:
+            self.iterate(self.n_iterations_cache)
 
-        eigen_triplets = match_eigen_pairs(
-            eigen_res[0], eigen_res[1], eigen_res_T[0], eigen_res_T[1], tol=1e-3
-        )
-        gradient = form_approximation(
-            eigen_triplets,
-            self.eigen_transform,
-            self.get_skeleton(np.complex64),
-            1,
-        )
-        return gradient.real
+        grad = torch.outer(self.v_T, self.v) / torch.inner(self.v_T, self.v)
+        grad = grad + self.identity_penalty * self.identity
+        grad = grad + self.transpose_penalty * self.matrix.T
+
+        return grad
 
     def base_name(self):
-        return "S-Top1"
-
-
-class TopEigenvaluesTransposeTrickGradientScipySparse(MatrixWithGradientScipySparse):
-    def __init__(self, matrix, keep_v=True, eigen_transform=None, **kwargs):
-        super().__init__(matrix, **kwargs)
-        self.keep_v = keep_v
-        if eigen_transform is None:
-            eigen_transform = lambda x: x / np.abs(x)
-        self.eigen_transform = eigen_transform
-        self.v0 = np.ones(2 * matrix.shape[0]) / np.sqrt(2 * matrix.shape[0])
-
-    def get_skeleton(self, dtype=np.float32):
-        return (self.matrix > 0).astype(dtype)
-
-    def compute_gradient(self):
-        matrix = self.get_matrix()
-        k = 1
-        if self.v0 is not None and self.v0.dtype == np.complex64 and self.name_suffix == "t":
-            matrix = matrix.astype(np.complex64)
-        tol = 1e-6
-        if "o" in self.name_suffix:
-            tol = 1e-4
-
-        # could be optimized:
-        double_matrix = scipy.sparse.block_diag([matrix, matrix.T], format="csr")
-        eigen_res = scipy.sparse.linalg.eigs(
-            double_matrix,
-            k=k,
-            which="LM",
-            v0=self.v0,
-        )
-        # if self.keep_v:
-        #     self.v0 = eigen_res[1][:, 0]
-
-        eigen_triplets = extract_eigen_triplets_from_double_eigen_res(eigen_res)
-        print(eigen_triplets[0][2])
-        gradient = form_approximation(
-            eigen_triplets,
-            self.eigen_transform,
-            self.get_skeleton(np.complex64),
-            1,
-        )
-        em = self.compute_eigen_metrics()
-        if gradient.real.max() > 100:
-            print("WARNING: gradient is too large")
-            em = self.compute_eigen_metrics()
-            print(sorted(em["eigenvalues"], key=np.abs, reverse=True))
-            sns.heatmap(to_numpy(self.get_matrix()))
-            plt.show()
-
-        if self.keep_v:
-            self.v0 = eigen_res[1][:, 0]
-        return gradient.real
-
-    def base_name(self):
-        return "S-TopKT-"
+        return "T-Power"
 
 
 class SCCTopEigenvalueGradient(MatrixWithGradientScipySparse):
@@ -743,12 +702,13 @@ class PowerIterationSCCMask(MatrixWithGradientScipySparse):
             np.outer(self.v0_T, self.v0)
             * self.get_skeleton(np.float32).toarray()
             / self.v0_T.dot(self.v0)
-        )*self.mask
+        ) * self.mask
         gradient = scipy.sparse.csr_matrix(gradient)
         return gradient
 
     def base_name(self):
         return "PowerIterationSCCMask"
+
 
 class SCCPowerIteration(MatrixWithGradientScipySparse):
     def __init__(self, matrix, update_scc_freq=100, **kwargs):
@@ -986,23 +946,10 @@ def plot_metrics(methods: List[MatrixWithGradient]):
 
     pairs_of_metrics = [
         ("epoch", "time"),
-        ("epoch", "n_non_zero"),
-        ("epoch", "n_non_zero_gradient"),
-        # ("epoch", "largest_eigen"),
-        ("epoch", "original_error_1"),
-        ("epoch", "original_error_inf"),
-        # ("epoch", "logdet"),
-        # ("epoch", "log_cycles"),
-        ("epoch", "norm_1"),
         ("epoch", "threshold_to_dag"),
-        ("norm_fro", "original_error_fro"),
-        ("norm_1", "original_error_1"),
+        ("time", "threshold_to_dag"),
         (
             "threshold_to_dag",
-            "n_non_zero",
-        ),
-        (
-            "norm_1",
             "n_non_zero",
         ),
         (
@@ -1020,6 +967,7 @@ def plot_metrics(methods: List[MatrixWithGradient]):
         ax.set_title("%s vs %s" % (y, x))
     fig.suptitle(title)
     plt.tight_layout()
+    plt.savefig("metrics.pdf", bbox_inches="tight")
     plt.show()
 
     # plot all matrices as heatmap on the same figure with shared colorbar
@@ -1037,7 +985,11 @@ if __name__ == "__main__":
     d = 1000
     m = 10
     W0 = generate_random_sparse_torch_matrix(d, m / d)
-    W0 += torch.eye(d) * 1
+    W0 += torch.eye(d)
+    anchor = generate_random_sparse_torch_matrix(d, m / d)
+    anchor += torch.eye(d)
+
+    anchor = W0.clone()
 
     # d = 4
     # W0 = (
@@ -1066,18 +1018,88 @@ if __name__ == "__main__":
     # )/5
 
     gradient_methods = [
+        # PowerIterationTorch(
+        #     W0,
+        #     regularization_to_original=1e-3,
+        #     identity_penalty=0,
+        #     name_suffix="no_identity_penalty",
+        # ),
+        # PowerIterationTorch(W0, regularization_to_anchor=1e-3, identity_penalty=10, anchor_matrix=anchor),
+        # PowerIterationTorch(
+        #     W0,
+        #     regularization_to_anchor=1e-3,
+        #     anchor_matrix=anchor,
+        #     identity_penalty=10,
+        #     reset_cache_every=1,
+        #     name_suffix="reset_cache_every_1",
+        # ),
+        PowerIterationTorch(
+            W0,
+            regularization_to_anchor=1e-3,
+            anchor_matrix=anchor,
+            identity_penalty=10,
+            n_iterations_cache=5,
+            name_suffix="n_iterations_cache_5",
+        ),
+        PowerIterationTorch(
+            W0,
+            regularization_to_anchor=1e-3,
+            anchor_matrix=anchor,
+            identity_penalty=10,
+            n_iterations_cache=1,
+            name_suffix="n_iterations_cache_1",
+        ),
+        PowerIterationTorch(
+            W0,
+            regularization_to_anchor=1e-3,
+            anchor_matrix=anchor,
+            identity_penalty=10,
+            reset_cache_every=1000000,
+            name_suffix="never_reset",
+        ),
         # ExponentialGradientTorch(W0, normalization=np.inf),
         # LogGradientTorch(W0, normalization=np.inf),
         # LogGradientTorch(W0),
         # InverseGradientTorch(W0, normalization=np.inf),
-        PowerIterationSCCMask(W0, update_scc_freq=500),
-        PowerIterationSCCMask(W0, update_scc_freq=500, regularization_to_original=1e-3, name_suffix="l2"),
-        # SCCPowerIteration(W0, update_scc_freq=500),
-        PowerIteration(W0, regularization_to_original=1e-3),
+        # PowerIterationSCCMask(W0, update_scc_freq=500),
+        # PowerIterationSCCMask(
+        #     W0, update_scc_freq=500, regularization_to_original=1e-3, name_suffix="l2"
+        # ),
+    ]
+    gradient_methods = [
+        PowerIterationTorch(
+            W0,
+            anchor_matrix=anchor,
+            regularization_to_anchor=1e-3,
+            identity_penalty=0,
+            name_suffix="no_identity_penalty",
+        ),
+        PowerIterationTorch(
+            W0, regularization_to_anchor=1e-3, identity_penalty=10, anchor_matrix=anchor
+        ),
+        ExponentialGradientTorch(
+            W0,
+            anchor_matrix=anchor,
+            regularization_to_anchor=1e-3,
+        ),
+        LogGradientTorch(
+            W0,
+            normalization=np.inf,
+            anchor_matrix=anchor,
+            regularization_to_anchor=1e-3,
+        ),
+        InverseGradientTorch(
+            W0,
+            normalization=np.inf,
+            anchor_matrix=anchor,
+            regularization_to_anchor=1e-3,
+        ),
     ]
     for gradient_method in gradient_methods:
         # gradient_method.train(600, 10, lr=1e-3)
-        gradient_method.train_until_dag(test_n_epochs=100, lr=1e-2, max_epochs=20_000, max_time=2*60)
+        gradient_method.train_until_dag(
+            test_n_epochs=100, lr=1e-2, max_epochs=20_000, max_time=2 * 60
+        )
     gm = gradient_methods[0]
     em = gm.compute_eigen_metrics()
     plot_metrics(gradient_methods)
@@ -1116,7 +1138,7 @@ if __name__ == "__main__":
     # melt
     cycle_weights = cycle_weights.melt(id_vars=["epoch"], value_name="weight", var_name="cycle")
     # add cycle length
-    cycle_weights["cycle_length"] = cycle_weights["cycle"]#.apply(lambda x: len(x))
+    cycle_weights["cycle_length"] = cycle_weights["cycle"]  # .apply(lambda x: len(x))
 
     # plot
     sns.lineplot(data=cycle_weights, x="epoch", y="weight", hue="cycle_length", style="cycle")
