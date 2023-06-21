@@ -1,7 +1,7 @@
 """
 Contains helper modules used in the models.
 """
-from typing import Literal, Optional
+from typing import Literal
 
 import scipy.sparse
 import torch

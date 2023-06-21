@@ -59,7 +59,7 @@ class SDCI(BaseModel):
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
         verbose: bool = False,
-        device: Optional[str] = None,
+        device: Optional[torch.device] = None,
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
