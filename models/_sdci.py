@@ -12,7 +12,7 @@ from modules import AutoEncoderLayers
 from train_utils import (
     compute_metrics,
 )
-from utils import print_graph_from_weights
+from utils import print_graph_from_weights, move_modules_to_device
 
 from .base._base_model import BaseModel
 
@@ -59,6 +59,7 @@ class SDCI(BaseModel):
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
         verbose: bool = False,
+        device: Optional[str] = None,
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
@@ -96,6 +97,9 @@ class SDCI(BaseModel):
                 adjacency_p=2.0,
                 dag_penalty_flavor="none",
                 )
+        if device:
+            move_modules_to_device(self._ps_model, device)
+
         ps_optimizer = torch.optim.Adam(
                 self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
                 )
@@ -112,12 +116,13 @@ class SDCI(BaseModel):
             log_wandb=log_wandb,
             print_graph=verbose,
             B_true=B_true,
+            device=device,
         )
 
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
         mask = (
-            self._ps_model.get_adjacency_matrix().detach().numpy() > mask_threshold
+            self._ps_model.get_adjacency_matrix().cpu().detach().numpy() > mask_threshold
         ).astype(int)
         if B_true is not None:
             print(
@@ -138,6 +143,9 @@ class SDCI(BaseModel):
             dag_penalty_flavor=dag_penalty_flavor,
             mask=mask,
         )
+        if device:
+            move_modules_to_device(self._model, device)
+
         optimizer = torch.optim.Adam(
             self._model.parameters(), lr=self._stage2_kwargs["learning_rate"]
         )
@@ -152,6 +160,7 @@ class SDCI(BaseModel):
             print_graph=verbose,
             B_true=B_true,
             start_wandb_epoch=self._stage1_kwargs["n_epochs"],
+            device=device,
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
@@ -159,7 +168,7 @@ class SDCI(BaseModel):
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
-        adj_matrix = self._model.get_adjacency_matrix().detach().numpy()
+        adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
         return (adj_matrix > self.threshold).astype(int) if threshold else adj_matrix
 
 
@@ -172,6 +181,7 @@ def _train(
     print_graph=True,
     B_true=None,
     start_wandb_epoch=0,
+    device=None,
 ):
     """Train the model. Assumes dataloader outputs batches alongside interventions."""
     # unpack config
@@ -201,6 +211,10 @@ def _train(
         epoch_loss_details = []
         for batch in dataloader:
             X_batch, interventions_batch = batch
+            if device:
+                X_batch = X_batch.to(device)
+                interventions_batch = interventions_batch.to(device)
+
             optimizer.zero_grad()
             loss, loss_details = model.loss(
                 X_batch,
@@ -217,7 +231,7 @@ def _train(
             epoch_loss_details.append(loss_details)
 
         if epoch % n_epochs_check == 0:
-            B_pred = model.get_adjacency_matrix().detach().numpy()
+            B_pred = model.get_adjacency_matrix().cpu().detach().numpy()
 
             if (
                 epoch > max(0.05 * n_epochs, 10)

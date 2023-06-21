@@ -17,6 +17,15 @@ def set_random_seed_all(seed=0):
     # torch.cuda.manual_seed(seed)
 
 
+def move_modules_to_device(module, device):
+    """Moves modules to a given device."""
+    if hasattr(module, 'to'):
+        module.to(device)
+
+    for submodule in module.children():
+        move_modules_to_device(submodule, device)
+
+
 def compute_p_vals(X_df):
     """Computes p-values of a KS test for each candidate edge of a causal graph given interventional data.
 
