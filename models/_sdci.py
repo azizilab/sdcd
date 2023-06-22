@@ -59,6 +59,7 @@ class SDCI(BaseModel):
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
         verbose: bool = False,
+        wandb_name="SDCI",
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
@@ -77,7 +78,7 @@ class SDCI(BaseModel):
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                     project=wandb_project,
-                    name="SDCI",
+                    name=wandb_name,
                     config={
                         "batch_size": batch_size,
                         "stage1_kwargs": self._stage1_kwargs,

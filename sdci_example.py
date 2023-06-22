@@ -16,28 +16,58 @@ X_df, B_true, wandb_config_dict = generate_dataset(
 )
 print("Dataset generated")
 dataset = create_intervention_dataset(X_df, regime_format=False)
-model = SDCI()
-model.train(
-    dataset,
-    log_wandb=True,
-    wandb_project="Test-SDCI",
-    wandb_config_dict=wandb_config_dict,
-    stage1_kwargs={
-        "n_epochs": 1000,
-        # "n_epochs_check": 10,
-    },
-    stage2_kwargs={
-        "n_epochs": 1000,
-        # "n_epochs_check": 10,
-    },
-    B_true=B_true,
-)
-# with more d: more independent weights? stronger regularization?
-metrics_dict = model.compute_metrics(B_true)
-metrics_dict["train_time"] = model._train_runtime_in_sec
 
-wandb.log(metrics_dict)
-wandb.finish()
+
+# sweep over hyperparameters:
+# - n_epochs: 1000
+# - learning rate: 1e-3, 2e-3, 5e-3, 1e-2
+# - batch size: 512
+# - beta: 1e-3, 1e-2
+# - stage 1:
+#   - alpha: 1e-2, 1e-1
+# - stage 2:
+#   - alpha: 1e-3, 1e-2, 1e-1
+#   - freeze_gamma_at_dag: True, False
+
+learning_rates = [1e-3, 5e-3, 1e-2]
+betas = [1e-3, 1e-2]
+alphas_stage1 = [1e-2, 1e-1]
+alphas_stage2 = [1e-3, 1e-2, 1e-1]
+freeze_gamma_at_dag = [True]
+
+for lr in learning_rates:
+    for beta in betas:
+        for a1 in alphas_stage1:
+            for a2 in alphas_stage2:
+                for f in freeze_gamma_at_dag:
+                    model = SDCI()
+                    model.train(
+                        dataset,
+                        log_wandb=True,
+                        wandb_project="Test-SDCI",
+                        wandb_config_dict=wandb_config_dict,
+                        stage1_kwargs={
+                            "n_epochs": 100,
+                            "learning_rate": lr,
+                            "alpha": a1,
+                            "beta": beta,
+                        },
+                        stage2_kwargs={
+                            "n_epochs": 100,
+                            "learning_rate": lr,
+                            "alpha": a2,
+                            "beta": beta,
+                            "freeze_gamma_at_dag": f,
+                        },
+                        B_true=B_true,
+                        wandb_name=f"lr={lr:1.0e}|beta={beta:1.0e}|a1={a1:1.0e}|a2={a2:1.0e}",
+                    )
+                    # with more d: more independent weights? stronger regularization?
+                    metrics_dict = model.compute_metrics(B_true)
+                    metrics_dict["train_time"] = model._train_runtime_in_sec
+
+                    wandb.log(metrics_dict)
+                    wandb.finish()
 
 
 
