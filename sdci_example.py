@@ -8,7 +8,7 @@ from train_utils import create_intervention_dataset
 
 seed = 0
 n = 40
-d = 100
+d = 500
 frac_interventions = 1.0
 n_edges_per_d = 5
 X_df, B_true, wandb_config_dict = generate_dataset(
@@ -29,10 +29,10 @@ dataset = create_intervention_dataset(X_df, regime_format=False)
 #   - alpha: 1e-3, 1e-2, 1e-1
 #   - freeze_gamma_at_dag: True, False
 
-learning_rates = [1e-3, 5e-3, 1e-2]
-betas = [1e-3, 1e-2]
-alphas_stage1 = [1e-2, 1e-1]
-alphas_stage2 = [1e-3, 1e-2, 1e-1]
+learning_rates = [5e-3]
+betas = [1e-3, 1e-2, 1e-4]
+alphas_stage1 = [1e-3, 1e-2, 1e-1, 1]
+alphas_stage2 = [1e-3, 1e-2, 1e-4]
 freeze_gamma_at_dag = [True]
 
 for lr in learning_rates:
@@ -44,16 +44,16 @@ for lr in learning_rates:
                     model.train(
                         dataset,
                         log_wandb=True,
-                        wandb_project="Test-SDCI",
+                        wandb_project="Test-SDCI-500",
                         wandb_config_dict=wandb_config_dict,
                         stage1_kwargs={
-                            "n_epochs": 100,
+                            "n_epochs": 1500,
                             "learning_rate": lr,
                             "alpha": a1,
                             "beta": beta,
                         },
                         stage2_kwargs={
-                            "n_epochs": 100,
+                            "n_epochs": 1500,
                             "learning_rate": lr,
                             "alpha": a2,
                             "beta": beta,
