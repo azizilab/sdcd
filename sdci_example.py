@@ -20,7 +20,6 @@ model = SDCI()
 model.train(
     dataset,
     log_wandb=True,
-    batch_size=256,
     wandb_project="Test-SDCI",
     wandb_config_dict=wandb_config_dict,
     stage1_kwargs={
