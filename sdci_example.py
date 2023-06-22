@@ -8,7 +8,7 @@ from train_utils import create_intervention_dataset
 
 seed = 0
 n = 40
-d = 500
+d = 200
 frac_interventions = 1.0
 n_edges_per_d = 5
 X_df, B_true, wandb_config_dict = generate_dataset(
@@ -44,7 +44,7 @@ for lr in learning_rates:
                     model.train(
                         dataset,
                         log_wandb=True,
-                        wandb_project="Test-SDCI-500",
+                        wandb_project="Test-SDCI-200",
                         wandb_config_dict=wandb_config_dict,
                         stage1_kwargs={
                             "n_epochs": 1500,
