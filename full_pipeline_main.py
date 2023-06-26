@@ -142,13 +142,13 @@ def save_B_pred(
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
-    "--model", default="dagma", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
+    "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
 )
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
 @click.option(
-    "--wandb-project", default="full-pipeline-simulation-1", help="Wandb project name"
+    "--wandb-project", default="full-pipeline-simulation", help="Wandb project name"
 )
 def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project):
     X_df, B_true, wandb_config_dict = generate_dataset(
