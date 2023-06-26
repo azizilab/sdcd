@@ -29,7 +29,6 @@ _DEFAULT_MODEL_KWARGS = dict(
 class DCDFG(BaseModel):
     def __init__(self):
         super().__init__()
-        self._model_kwargs = None
         self._adj_matrix = None
         self._adj_matrix_thresh = None
 
