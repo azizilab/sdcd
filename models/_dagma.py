@@ -29,7 +29,7 @@ class DAGMA(BaseModel):
         self,
         dataset: Dataset,
         log_wandb: bool = False,
-        wandb_project: str = "DCDFG",
+        wandb_project: str = "DAGMA",
         wandb_config_dict: Optional[dict] = None,
         val_fraction: float = 0.2,
         **model_kwargs,
