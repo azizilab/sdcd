@@ -5,6 +5,7 @@ import numpy as np
 import wandb
 
 import simulation
+from models._dagma import DAGMA
 from utils import set_random_seed_all
 from train_utils import (
     create_intervention_dataset,
@@ -44,13 +45,14 @@ def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
     return X_df, B_true, wandb_config_dict
 
 
-def run_sdci(X_df, B_true, wandb_config_dict):
+def run_sdci(X_df, B_true, wandb_config_dict, wandb_project):
     dataset = create_intervention_dataset(X_df, regime_format=False)
+    wandb_config_dict["model"] = "SDCI"
     model = SDCI()
     model.train(
         dataset,
         log_wandb=True,
-        wandb_project="full-pipeline-simulation",
+        wandb_project=wandb_project,
         wandb_config_dict=wandb_config_dict,
         B_true=B_true,
     )
@@ -63,13 +65,14 @@ def run_sdci(X_df, B_true, wandb_config_dict):
     return model.get_adjacency_matrix()
 
 
-def run_dcdi(X_df, B_true, wandb_config_dict):
+def run_dcdi(X_df, B_true, wandb_config_dict, wandb_project):
     dataset = create_intervention_dataset(X_df, regime_format=True)
+    wandb_config_dict["model"] = "DCDI"
     model = DCDI()
     model.train(
         dataset,
         log_wandb=True,
-        wandb_project="full-pipeline-simulation-DCDI",
+        wandb_project=wandb_project,
         wandb_config_dict=wandb_config_dict,
     )
     metrics_dict = model.compute_metrics(B_true)
@@ -81,13 +84,14 @@ def run_dcdi(X_df, B_true, wandb_config_dict):
     return model.get_adjacency_matrix()
 
 
-def run_dcdfg(X_df, B_true, wandb_config_dict):
-    dataset = create_intervention_dataset(X_df, regime_format=True)
+def run_dcdfg(X_df, B_true, wandb_config_dict, wandb_project):
+    dataset = create_intervention_dataset(X_df, regime_format=False)
+    wandb_config_dict["model"] = "DCDFG"
     model = DCDFG()
     model.train(
         dataset,
         log_wandb=True,
-        wandb_project="full-pipeline-simulation-DCDFG",
+        wandb_project=wandb_project,
         wandb_config_dict=wandb_config_dict,
     )
     metrics_dict = model.compute_metrics(B_true)
@@ -98,6 +102,24 @@ def run_dcdfg(X_df, B_true, wandb_config_dict):
 
     return model.get_adjacency_matrix()
 
+
+def run_dagma(X_df, B_true, wandb_config_dict, wandb_project):
+    dataset = create_intervention_dataset(X_df, regime_format=True)
+    wandb_config_dict["model"] = "DAGMA"
+    model = DAGMA()
+    model.train(
+        dataset,
+        log_wandb=True,
+        wandb_project=wandb_project,
+        wandb_config_dict=wandb_config_dict,
+    )
+    metrics_dict = model.compute_metrics(B_true)
+    metrics_dict["train_time"] = model._train_runtime_in_sec
+
+    wandb.log(metrics_dict)
+    wandb.finish()
+
+    return model.get_adjacency_matrix()
 
 def save_B_pred(
     B_pred, n, d, seed, frac_interventions, method_name, dirname="saved_mtxs/"
@@ -113,33 +135,36 @@ def save_B_pred(
 
 @click.command()
 @click.option("--n", default=50, help="Per interventional subset")
-@click.option("--d", type=int, help="Number of dimensions")
+@click.option("--d", default=20, type=int, help="Number of dimensions")
 @click.option(
     "--n_edges_per_d", type=int, default=5, help="Number of edges per dimension"
 )
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
-    "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg]"
+    "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
 )
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs):
+@click.option(
+    "--wandb-project", default="full-pipeline-simulation", help="Wandb project name"
+)
+def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project):
     X_df, B_true, wandb_config_dict = generate_dataset(
         n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d
     )
     if save_mtxs:
         save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
-    if model == "all" or model == "sdci":
-        B_pred = run_sdci(X_df, B_true, wandb_config_dict)
-        if save_mtxs:
-            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
+    # if model == "all" or model == "sdci":
+    #     B_pred = run_sdci(X_df, B_true, wandb_config_dict, wandb_project)
+    #     if save_mtxs:
+    #         save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
 
     if model == "all" or model == "dcdi":
         try:
-            B_pred = run_dcdi(X_df, B_true, wandb_config_dict)
+            B_pred = run_dcdi(X_df, B_true, wandb_config_dict, wandb_project)
             if save_mtxs:
                 save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdi")
         except ValueError:
@@ -147,9 +172,14 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save
             wandb.finish()
 
     if model == "all" or model == "dcdfg":
-        B_pred = run_dcdfg(X_df, B_true, wandb_config_dict)
+        B_pred = run_dcdfg(X_df, B_true, wandb_config_dict, wandb_project)
         if save_mtxs:
             save_B_pred(B_pred, n, d, seed, frac_interventions, "dcdfg")
+
+    if model == "all" or model == "dagma":
+        B_pred = run_dagma(X_df, B_true, wandb_config_dict, wandb_project)
+        if save_mtxs:
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "dagma")
 
 
 if __name__ == "__main__":

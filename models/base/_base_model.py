@@ -12,6 +12,7 @@ from train_utils import (
 class BaseModel:
     def __init__(self):
         self._model = None
+        self._model_kwargs = None
 
     @abstractmethod
     def train(

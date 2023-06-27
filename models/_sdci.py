@@ -45,7 +45,6 @@ _DEFAULT_STAGE2_KWARGS = {
 class SDCI(BaseModel):
     def __init__(self):
         super().__init__()
-        self._model_kwargs = None
         self._stage1_kwargs = None
         self._stage2_kwargs = None
 
