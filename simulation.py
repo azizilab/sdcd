@@ -222,7 +222,7 @@ def simulate_nonlinear_sem(B, n, sem_type, noise_scale=None):
             raise ValueError("unknown sem type")
 
     d = B.shape[0]
-    scale_vec = noise_scale if noise_scale else np.ones(d)
+    scale_vec = noise_scale if noise_scale is not None else np.ones(d)
     X = np.zeros([n, d])
     G = ig.Graph.Adjacency(B.tolist())
     ordered_vertices = G.topological_sorting()
@@ -293,7 +293,7 @@ def simulate_nonlinear_sem_knockdown(
             raise ValueError("unknown sem type")
 
     d = B.shape[0]
-    scale_vec = noise_scale if noise_scale else np.ones(d)
+    scale_vec = noise_scale if noise_scale is not None else np.ones(d)
     X = np.zeros([n, d])
     G = ig.Graph.Adjacency(B.tolist())
     ordered_vertices = G.topological_sorting()
@@ -310,7 +310,7 @@ def simulate_nonlinear_sem_knockdown(
     return X, new_param_dict
 
 
-def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0, size_observational=None):
+def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0, size_observational=None, noise_scale=None):
     assert knockdown_eff <= 1.0 and knockdown_eff >= 0.0
     if size_observational is None:
         size_observational = n
@@ -318,13 +318,13 @@ def generate_full_interventional_set(B, n, sem_type, knockdown_eff=1.0, size_obs
     X_subsets = []
     perturbation_labels = []
 
-    X, param_dict = simulate_nonlinear_sem(B, size_observational, sem_type)
+    X, param_dict = simulate_nonlinear_sem(B, size_observational, sem_type, noise_scale=noise_scale)
     X_subsets.append(X)
     perturbation_labels.append("obs")
 
     for i in range(d):
         X_int, _ = simulate_nonlinear_sem_knockdown(
-            B, n, sem_type, param_dict, i, knockdown_eff=1.0
+            B, n, sem_type, param_dict, i, knockdown_eff=1.0, noise_scale=noise_scale
         )
         X_subsets.append(X_int)
         perturbation_labels.append(i)
