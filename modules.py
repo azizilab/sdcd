@@ -92,9 +92,10 @@ class DispatcherLayer(nn.Module):
         self.hidden_dim = hidden_dim
         self.adjacency_p = adjacency_p
 
-        self.mask = torch.ones((in_dim, out_dim), requires_grad=False)
         if mask is not None and not warmstart:
-            self.mask = torch.tensor(mask, requires_grad=False).float()
+            self.register_buffer("mask", torch.tensor(mask).float())
+        else:
+            self.register_buffer("mask", torch.ones((in_dim, out_dim)))
 
         if mask is not None and warmstart:
             warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat((1, 1, hidden_dim))
@@ -181,9 +182,9 @@ class AutoEncoderLayers(nn.Module):
         )
 
         if dag_penalty_flavor == "scc":
-            self.power_grad = SCCPowerIteration(self, 1000)
+            self.power_grad = SCCPowerIteration(self.get_adjacency_matrix(), self.in_dim, 1000)
         elif dag_penalty_flavor == "power_iteration":
-            self.power_grad = PowerIterationGradient(self)
+            self.power_grad = PowerIterationGradient(self.get_adjacency_matrix(), self.in_dim)
 
         self.identity = torch.eye(self.in_dim)
 
@@ -199,6 +200,10 @@ class AutoEncoderLayers(nn.Module):
                 self.layers.append(LinearParallel(dims[i], dims[i + 1], self.in_dim))
 
         self.reset_parameters()
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
 
     def forward(self, x):
         """
@@ -252,7 +257,7 @@ class AutoEncoderLayers(nn.Module):
         return h
 
     def dag_reg_power_grad(self):
-        grad, A = self.power_grad.compute_gradient()
+        grad, A = self.power_grad.compute_gradient(self.get_adjacency_matrix())
         # with torch.no_grad():
         #     grad = grad - A * (grad * A).sum() / ((A**2).sum() + 1e-6) / 2
         # grad = grad + torch.eye(self.in_dim)
@@ -279,6 +284,8 @@ class AutoEncoderLayers(nn.Module):
             dag_reg = self.dag_reg_power_grad()
         elif self.dag_penalty_flavor == "none":
             dag_reg = torch.zeros(1)
+        dag_reg = dag_reg.to(self.device)
+
         total_loss = nll + l1_reg + l2_reg + gamma * dag_reg
 
         if return_detailed_losses:
@@ -296,30 +303,36 @@ def normalize(v):
     return v / torch.linalg.vector_norm(v)
 
 
-class SCCPowerIteration:
-    def __init__(self, model: "AutoEncoderLayers", update_scc_freq=1000):
-        self.d = model.in_dim
+class SCCPowerIteration(nn.Module):
+    def __init__(self, init_adj_mtx, d, update_scc_freq=1000):
+        super().__init__()
+        self.d = d
         self.update_scc_freq = update_scc_freq
-        self.get_matrix = model.get_adjacency_matrix
+
+        self._dummy_param = nn.Parameter(torch.empty(1), requires_grad=False) # Used to track device
 
         self.scc_list = None
-        self.update_scc()
+        self.update_scc(init_adj_mtx)
 
-        self.v = None
-        self.vt = None
-        self.initialize_eigenvectors()
+        self.register_buffer("v", None)
+        self.register_buffer("vt", None)
+        self.initialize_eigenvectors(init_adj_mtx)
 
         self.n_updates = 0
 
-    def initialize_eigenvectors(self):
-        self.v, self.vt = torch.ones(size=(2, self.d))
+    @property
+    def device(self):
+        return self._dummy_param.device
+
+    def initialize_eigenvectors(self, adj_mtx):
+        self.v, self.vt = torch.ones(size=(2, self.d), device=self.device)
         self.v = normalize(self.v)
         self.vt = normalize(self.vt)
-        return self.power_iteration(5)
+        return self.power_iteration(adj_mtx, 5)
 
-    def update_scc(self):
+    def update_scc(self, adj_mtx):
         n_components, labels = scipy.sparse.csgraph.connected_components(
-            csgraph=scipy.sparse.coo_matrix(self.get_matrix().detach().numpy()),
+            csgraph=scipy.sparse.coo_matrix(adj_mtx.cpu().detach().numpy()),
             directed=True,
             return_labels=True,
             connection="strong",
@@ -330,8 +343,8 @@ class SCCPowerIteration:
             self.scc_list.append(scc)
         # print(len(self.scc_list))
 
-    def power_iteration(self, n_iter=5):
-        matrix = self.get_matrix() ** 2
+    def power_iteration(self, adj_mtx, n_iter=5):
+        matrix = adj_mtx ** 2
         for scc in self.scc_list:
             if len(scc) == self.d:
                 sub_matrix = matrix
@@ -355,15 +368,15 @@ class SCCPowerIteration:
 
         return matrix
 
-    def compute_gradient(self):
+    def compute_gradient(self, adj_mtx):
         if self.n_updates % self.update_scc_freq == 0:
-            self.update_scc()
-            self.initialize_eigenvectors()
+            self.update_scc(adj_mtx)
+            self.initialize_eigenvectors(adj_mtx)
 
         # matrix = self.power_iteration(4)
-        matrix = self.initialize_eigenvectors()
+        matrix = self.initialize_eigenvectors(adj_mtx)
 
-        gradient = torch.zeros(size=(self.d, self.d))
+        gradient = torch.zeros(size=(self.d, self.d), device=self.device)
         for scc in self.scc_list:
             if len(scc) == self.d:
                 v = self.v
@@ -374,7 +387,7 @@ class SCCPowerIteration:
                 vt = self.vt[scc]
                 gradient[scc][:, scc] = torch.outer(vt, v) / torch.inner(vt, v)
 
-        gradient += 100 * torch.eye(self.d)
+        gradient += 100 * torch.eye(self.d, device=self.device)
         # gradient += matrix.T
 
         self.n_updates += 1
@@ -382,26 +395,31 @@ class SCCPowerIteration:
         return gradient, matrix
 
 
-class PowerIterationGradient:
-    def __init__(self, model: "AutoEncoderLayers"):
-        self.model = model
-        self.d = model.in_dim
+class PowerIterationGradient(nn.Module):
+    def __init__(self, init_adj_mtx, d):
+        super().__init__()
+        self.d = d
 
-        self.u = None
-        self.v = None
+        self._dummy_param = nn.Parameter(torch.empty(1), requires_grad=False) # Used to track device
 
-        self.init_eigenvect()
+        self.register_buffer("u", None) 
+        self.register_buffer("v", None)
 
-    def init_eigenvect(self):
-        self.u, self.v = torch.ones(size=(2, self.d))
+        self.init_eigenvect(init_adj_mtx)
+
+    @property
+    def device(self):
+        return self._dummy_param.device
+
+    def init_eigenvect(self, adj_mtx):
+        self.u, self.v = torch.ones(size=(2, self.d), device=self.device)
         self.u = self.u / torch.linalg.vector_norm(self.u)
         self.v = self.v / torch.linalg.vector_norm(self.v)
-        self.iterate(5)
+        self.iterate(adj_mtx, 5)
 
-    def iterate(self, n=2, A=None):
+    def iterate(self, adj_mtx, n=2):
         with torch.no_grad():
-            A = self.model.get_adjacency_matrix() ** 2 if A is None else A
-            A = A + 1e-6
+            A = adj_mtx + 1e-6
             for _ in range(n):
                 self.one_iteration(A)
 
@@ -410,11 +428,11 @@ class PowerIterationGradient:
         self.u = normalize(A.T @ self.u)
         self.v = normalize(A @ self.v)
 
-    def compute_gradient(self):
+    def compute_gradient(self, adj_mtx):
         """Gradient eigenvalue"""
-        A = self.model.get_adjacency_matrix() ** 2
+        A = adj_mtx ** 2
         # self.iterate(4, A)
-        self.init_eigenvect()
+        self.init_eigenvect(adj_mtx)
         grad = self.u[:, None] @ self.v[None] / (self.u.dot(self.v) + 1e-6)
         # grad += torch.eye(self.d)
         # grad += A.T

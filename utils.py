@@ -1,9 +1,11 @@
+from typing import Optional
 import random
 from tqdm import tqdm
 
 import networkx as nx
 import numpy as np
 import torch
+import torch.nn as nn
 import scipy.stats
 import pandas as pd
 
@@ -15,6 +17,15 @@ def set_random_seed_all(seed=0):
     np.random.seed(seed)
     torch.manual_seed(seed)
     # torch.cuda.manual_seed(seed)
+
+
+def move_modules_to_device(module: nn.Module, device: Optional[torch.device]):
+    """Moves modules to a given device."""
+    if hasattr(module, 'to'):
+        module.to(device)
+
+    for submodule in module.children():
+        move_modules_to_device(submodule, device)
 
 
 def compute_p_vals(X_df):
