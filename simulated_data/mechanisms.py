@@ -1,135 +1,160 @@
+from typing import Union, Optional, Callable
+
+import networkx as nx
 import torch
 
+from causal_model import CausalModel
 from causal_model.mechanisms import ParametricConditionalDistribution
 from modules import DenseLayers
 
 
 class MLP(torch.nn.Module):
-    def __init__(self, parent_names, hidden_dims, default_mean=0.0, scale=1.0, activation="relu"):
+    """A dense neural networks that takes as input the values of the parents of a given variable and outputs the
+    parameters of the distribution of that variable.
+
+    The parameters of the distribution are given by a dictionary of outputs with default values (for the root nodes with
+    no parents).
+
+    Args:
+        parent_names: the names of the parents of the variable.
+        hidden_dims: the dimensions of the hidden layers.
+        outputs_with_defaults: a dictionary with the names of the outputs as keys and the default values as values.
+        outputs_transform: a dictionary to optionally specify a transformation to apply to some outputs.
+    """
+
+    def __init__(
+        self,
+        parent_names: list[str],
+        hidden_dims: list[int],
+        outputs_with_defaults: dict,
+        outputs_transform: Optional[dict[str, torch.nn.Module]] = None,
+        activation: Union[str, torch.nn.Module] = "relu",
+        extra_outputs: Optional[dict] = None,
+    ):
         super().__init__()
         self.parent_names = parent_names
         self.hidden_dims = hidden_dims
-        self.default_mean = default_mean
-        self.scale = scale
+        self.outputs_with_defaults = outputs_with_defaults
+        self.outputs_transform = outputs_transform
         self.activation = activation
+        self.extra_outputs = extra_outputs
 
         n_parents = len(parent_names)
         self.n_parents = n_parents
+        self.n_outputs = len(self.outputs_with_defaults)
         if self.n_parents == 0:
-            self.conditional_parameters_func = lambda: {"loc": default_mean, "scale": self.scale}
+            self.mlp = None
         else:
-            self.mlp = DenseLayers(self.n_parents, 1, hidden_dims, activation=activation)
-            self.mlp.reset_parameters(10)
+            self.mlp = DenseLayers(
+                self.n_parents, self.n_outputs, hidden_dims, activation=activation
+            )
+            self.mlp.reset_parameters()
 
     def forward(self, **parents_values):
         if len(parents_values) != self.n_parents:
             raise ValueError("Wrong number of parents")
         if self.n_parents == 0:
-            return {"loc": self.default_mean, "scale": self.scale}
+            return {**self.outputs_with_defaults, **self.extra_outputs}
         # we sort the keys to have a consistent order of parents
         x = torch.stack([parents_values[parent] for parent in sorted(parents_values.keys())], dim=1)
-        mean = self.mlp(x).squeeze(-1)
-        return {"loc": mean, "scale": self.scale}
+        output = self.mlp(x)
+        # chunk the output into the different variables
+        output = torch.split(output, 1, dim=1)
+        output = {
+            name: value.squeeze(1) for name, value in zip(self.outputs_with_defaults.keys(), output)
+        }
+        if self.outputs_transform is not None:
+            for name, transform in self.outputs_transform.items():
+                output[name] = transform(output[name])
+
+        output = {**output, **self.extra_outputs}
+        return output
 
 
-#
-# def get_conditional_mlp_loc(n_parents, hidden_dims, default_mean=0.0, scale=1.0, activation="relu"):
-#     if n_parents == 0:
-#         conditional_parameters_func = lambda: {"loc": default_mean, "scale": scale}
-#     else:
-#         # DenseLayers is initialized randomly
-#         mlp = DenseLayers(n_parents, 1, hidden_dims, activation=activation)
-#         mlp.reset_parameters(10)
-#
-#         def conditional_parameters_func(**parents_values):
-#             if len(parents_values) != n_parents:
-#                 raise ValueError("Wrong number of parents")
-#             # we sort the keys to have a consistent order of parents
-#             x = torch.stack(
-#                 [parents_values[parent] for parent in sorted(parents_values.keys())], dim=1
-#             )
-#             mean = mlp(x).squeeze(-1)
-#             return {"loc": mean, "scale": scale}
-#
-#     return conditional_parameters_func
-#
-#
-# def get_conditional_mlp_loc_scale(
-#     n_parents, hidden_dims, default_mean=0.0, default_scale=1.0, activation="relu"
-# ):
-#     if n_parents == 0:
-#         conditional_parameters_func = lambda: {"loc": default_mean, "scale": default_scale}
-#     else:
-#         # DenseLayers is initialized randomly
-#         mlp = DenseLayers(n_parents, 2, hidden_dims, activation=activation)
-#
-#         def conditional_parameters_func(**parents_values):
-#             if len(parents_values) != n_parents:
-#                 raise ValueError("Wrong number of parents")
-#             # we sort the keys to have a consistent order of parents
-#             x = torch.cat(
-#                 [parents_values[parent] for parent in sorted(parents_values.keys())], dim=1
-#             )
-#             mean, log_scale = mlp(x).chunk(2, dim=1)
-#             scale = torch.exp(log_scale)
-#             return {"loc": mean, "scale": scale}
-#
-#     return conditional_parameters_func
-
-
-def _generate_parametric_mechanisms_for_graph(
-    conditional_parameters_func_generator, response_distribution_constructor, causal_graph, **kwargs
+def generate_gaussian_mlp_fixed_scale_mechanisms(
+    causal_model: CausalModel,
+    hidden_dims: list[int],
+    default_mean: float = 0.0,
+    scale: Union[float, Callable] = 1.0,
+    activation: str = "relu",
 ):
-    """Generate a dictionary of mechanisms for each node in the graph.
+    """Generate a dictionary of Gaussian conditional MLP mechanisms with fixed variance for each node in the graph.
+    The variance can be a fixed value or a function of the depth of the node in the graph.
 
     Args:
-        conditional_parameters_func_generator: a function that takes as input the number of parents of the node and returns a function
-            that takes as input the parents of the node and returns a dictionary of parameters for the building response
-            distribution.
-        response_distribution_constructor: a function that takes as input the parameters of the response distribution and
-            returns a Distribution object.
-        causal_graph: a CausalGraph object.
-        **kwargs: additional arguments to pass to the conditional_parameters_func_generator.
+        causal_model: a CausalModel object.
+        hidden_dims: list of hidden dimensions for each MLP.
+        default_mean: default mean of the Gaussian distribution (for root nodes).
+        scale: scale of the Gaussian distribution. If it is a float, it is used as the fixed scale for all nodes. If
+            it is a callable, it is used as a function of the depth of the node in the graph (the depth is defined as
+            the length of the longest path from the node to a root node).
+        activation: activation function for the MLP.
+
+    Returns:
+        a dictionary of mechanisms for each node in the graph.
+    """
+    if type(scale) == float:
+        scale_value = scale
+    else:
+        # compute the depth of each node, start from the root nodes and go down
+        node_depth = {}
+        for node in nx.topological_sort(causal_model.graph):
+            parents = list(causal_model.graph.predecessors(node))
+            if len(parents) == 0:
+                node_depth[node] = 0
+            else:
+                node_depth[node] = max([node_depth[parent] for parent in parents]) + 1
+
+    mechanisms = {}
+    for node in causal_model.nodes:
+        parents = causal_model.get_parents(node)
+        if type(scale) == float:
+            scale_value = scale
+        else:
+            scale_value = scale(node_depth[node])
+        conditional_parameter_func = MLP(
+            parents,
+            hidden_dims,
+            {"loc": default_mean},
+            activation=activation,
+            extra_outputs={"scale": scale_value},
+        )
+        mechanisms[node] = ParametricConditionalDistribution(
+            conditional_parameter_func, torch.distributions.Normal, parents
+        )
+    return mechanisms
+
+
+def generate_gaussian_mlp_mechanisms(
+    causal_model: CausalModel,
+    hidden_dims: list[int],
+    default_mean: float = 0.0,
+    default_scale: float = 1.0,
+    activation: str = "relu",
+):
+    """Generate a dictionary of Gaussian conditional MLP mechanisms with fixed variance for each node in the graph.
+
+    Args:
+        causal_model: a CausalModel object.
+        hidden_dims: list of hidden dimensions for each MLP.
+        default_mean: default mean of the Gaussian distribution (for root nodes).
+        default_scale: default scale of the Gaussian distribution. (for root nodes).
+        activation: activation function for the MLP.
 
     Returns:
         a dictionary of mechanisms for each node in the graph.
     """
     mechanisms = {}
-    for node in causal_graph.nodes:
-        parents = causal_graph.get_parents(node)
-        conditional_parameters_func = conditional_parameters_func_generator(parents, **kwargs)
-        mechanisms[node] = ParametricConditionalDistribution(
-            conditional_parameters_func,
-            response_distribution_constructor,
+    for node in causal_model.nodes:
+        parents = causal_model.get_parents(node)
+        conditional_parameter_func = MLP(
             parents,
+            hidden_dims,
+            outputs_with_defaults={"loc": default_mean, "scale": default_scale},
+            outputs_transform={"scale": torch.nn.Softplus()},
+            activation=activation,
+        )
+        mechanisms[node] = ParametricConditionalDistribution(
+            conditional_parameter_func, torch.distributions.Normal, parents
         )
     return mechanisms
-
-
-def generate_gaussian_mlp_mean_mechanisms_for_graph(
-    causal_graph,
-    hidden_dims,
-    default_mean=0.0,
-    scale=1.0,
-    activation="sigmoid",
-):
-    """Generate a dictionary of Gaussian MLP mechanisms for each node in the graph.
-
-    Args:
-        causal_graph: a CausalGraph object.
-        hidden_dims: a list of hidden dimensions for the MLP.
-        default_mean: the default mean for the Gaussian MLP.
-        scale: the scale of the Gaussian MLP.
-        activation: the activation function for the MLP.
-    Returns:
-        a dictionary of Gaussian MLP mechanisms for each node in the graph.
-    """
-    conditional_parameters_func_generator = lambda n_parents: MLP(
-        n_parents, hidden_dims, default_mean=default_mean, scale=scale, activation=activation
-    )
-    response_distribution_constructor = torch.distributions.Normal
-    return _generate_parametric_mechanisms_for_graph(
-        conditional_parameters_func_generator,
-        response_distribution_constructor,
-        causal_graph,
-    )
