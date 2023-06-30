@@ -37,13 +37,13 @@ def random_dag_from_undirected_graph(graph):
     return dag
 
 
-def random_dag(n_nodes=20, n_edges=20, distribution="uniform"):
+def random_dag(n_nodes: int = 20, n_edges: int = 20, distribution: str = "uniform"):
     """Return a random DAG.
 
     Args:
-        n_nodes (int): Number of nodes.
-        n_edges (int): Number of edges (only used for uniform distribution).
-        distribution (str): Distribution of the random graph, one of "uniform" (or "erdos_renyi") or "scale_free".
+        n_nodes: Number of nodes.
+        n_edges: Number of edges (only used for uniform distribution).
+        distribution: Distribution of the random graph, one of "uniform" (or "erdos_renyi") or "scale_free".
     """
     if distribution in ["uniform", "erdos_renyi"]:
         graph = nx.gnm_random_graph(n_nodes, n_edges, directed=False)

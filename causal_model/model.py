@@ -1,5 +1,8 @@
 from collections import defaultdict
+from typing import Optional
+
 import networkx as nx
+import pandas as pd
 
 
 class CausalModel:
@@ -36,7 +39,7 @@ class CausalModel:
         return self.graph.nodes
 
     def get_parents(self, node):
-        """Return the parents of a node."""
+        """Return the parents of a variable."""
         return sorted(self.graph.predecessors(node))
 
     def sample_from_model(self, n_samples, intervention_name=None):
@@ -60,12 +63,46 @@ class CausalModel:
         return samples_per_node
 
     def sample_from_observational_distribution(self, n_samples):
-        """Sample from the observational distribution of the causal graph."""
+        """Sample from the observational distribution of the causal model."""
         return self.sample_from_model(n_samples)
 
     def sample_from_interventional_distribution(self, n_samples, intervention_name):
-        """Sample from the interventional distribution of the causal graph."""
+        """Sample from the interventional distribution of the causal model."""
         return self.sample_from_model(n_samples, intervention_name)
+
+    def generate_dataframe_from_all_distributions(
+        self,
+        n_samples_control: int = 1_000,
+        n_samples_per_intervention: int = 100,
+        subset_interventions: Optional[list] = None,
+    ):
+        """Generate a dataset from the observational distribution and all the interventional distributions.
+
+        Args:
+            n_samples_control (int): number of samples from the observational distribution
+            n_samples_per_intervention (int): number of samples from each interventional distribution
+            subset_interventions (list): subset of interventions to consider. If None, all interventions are considered.
+
+        Returns:
+            pd.DataFrame: dataset with the samples (one column per variable) and a column "intervention_label" that
+                indicates the intervention applied to each sample (or "control" if no intervention was applied).
+        """
+        samples = self.sample_from_observational_distribution(n_samples_control)
+        samples["intervention_label"] = "control"
+        data = [pd.DataFrame(samples)]
+
+        if subset_interventions is None:
+            subset_interventions = self.interventions.keys()
+        for intervention_name in subset_interventions:
+            samples = self.sample_from_interventional_distribution(
+                n_samples_per_intervention, intervention_name
+            )
+            samples["intervention_label"] = intervention_name
+            samples = pd.DataFrame(samples)
+            data.append(samples)
+
+        data = pd.concat(data, ignore_index=True)
+        return data
 
     def set_causal_mechanisms(self, causal_mechanisms):
         self.causal_mechanisms = causal_mechanisms

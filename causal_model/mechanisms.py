@@ -1,8 +1,7 @@
 import abc
 import copy
-from typing import Union, List
+from typing import Union
 
-import torch
 from torch.distributions import Distribution, AffineTransform, TransformedDistribution
 
 # For simplicity, we directly use torch distribution, but what we need is just a class with a sample method
@@ -18,7 +17,7 @@ class ConditionalDistribution(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_parents(self) -> List[str]:
+    def get_parents(self) -> list[str]:
         pass
 
     def sample(self, sample_shape, **parents_values):
@@ -48,7 +47,7 @@ class ParametricConditionalDistribution(ConditionalDistribution):
         self,
         conditional_parameters_func,
         response_distribution_constructor: type[Distribution],
-        parent_names: List[str],
+        parent_names: list[str],
     ):
         self.response_distribution_constructor = response_distribution_constructor
         self.conditional_parameters_func = conditional_parameters_func
@@ -59,7 +58,7 @@ class ParametricConditionalDistribution(ConditionalDistribution):
         else:
             self.root = False
 
-    def get_parents(self) -> List[str]:
+    def get_parents(self) -> list[str]:
         return self.parent_names
 
     def compute_distribution_from_parents(self, **kwargs) -> Distribution:
