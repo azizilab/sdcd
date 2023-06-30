@@ -157,10 +157,10 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save
     if save_mtxs:
         save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
-    # if model == "all" or model == "sdci":
-    #     B_pred = run_sdci(X_df, B_true, wandb_config_dict, wandb_project)
-    #     if save_mtxs:
-    #         save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
+    if model == "all" or model == "sdci":
+        B_pred = run_sdci(X_df, B_true, wandb_config_dict, wandb_project)
+        if save_mtxs:
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
 
     if model == "all" or model == "dcdi":
         try:
