@@ -10,10 +10,29 @@ import torch.nn as nn
 import numpy as np
 
 
+def get_activation(activation: Literal["relu", "sigmoid", "tanh", "linear"]):
+    """
+    Args:
+        activation (str): activation function name
+    Returns:
+        torch.nn.Module: activation function
+    """
+    if activation == "relu":
+        return nn.ReLU()
+    elif activation == "sigmoid":
+        return nn.Sigmoid()
+    elif activation == "tanh":
+        return nn.Tanh()
+    elif activation == "linear":
+        return nn.Identity()
+    else:
+        raise ValueError(f"Unknown activation function: {activation}")
+
+
 class DenseLayers(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dims, activation, batch_norm=False):
         super().__init__()
-        self.activation = activation
+        self.activation = get_activation(activation) if type(activation) == str else activation
         self.batch_norm = batch_norm
         self.layers = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
@@ -46,9 +65,11 @@ class DenseLayers(nn.Module):
         return [layer.weight.T for layer in self.layers]
 
     @torch.no_grad()
-    def reset_parameters(self):
+    def reset_parameters(self, scale=1.0):
         for layer in self.layers:
-            bound = 2.0 / layer.in_features**0.5 / layer.out_features**0.5
+            if layer.in_features == 0 or layer.out_features == 0:
+                continue
+            bound = 2.0 / layer.in_features**0.5 / layer.out_features**0.5 * scale
             nn.init.uniform_(layer.weight, -bound, bound)
             nn.init.uniform_(layer.bias, -bound, bound)
 
