@@ -48,7 +48,7 @@ class MLP(torch.nn.Module):
             self.mlp = DenseLayers(
                 self.n_parents, self.n_outputs, hidden_dims, activation=activation
             )
-            self.mlp.reset_parameters()
+            self.mlp.reset_parameters_away_from_zero()
 
     def forward(self, **parents_values):
         if len(parents_values) != self.n_parents:
