@@ -73,6 +73,20 @@ class DenseLayers(nn.Module):
             nn.init.uniform_(layer.weight, -bound, bound)
             nn.init.uniform_(layer.bias, -bound, bound)
 
+    @torch.no_grad()
+    def reset_parameters_away_from_zero(self, min_abs_value=0.5, max_abs_value=2.0):
+        for layer in self.layers:
+            if layer.in_features == 0 or layer.out_features == 0:
+                continue
+            random_signs_layer = torch.randint(0, 2, layer.weight.shape) * 2 - 1
+            layer.weight.data = random_signs_layer * (
+                    torch.rand(layer.weight.shape) * (max_abs_value - min_abs_value) + min_abs_value
+            )
+            random_signs_bias = torch.randint(0, 2, layer.bias.shape) * 2 - 1
+            layer.bias.data = random_signs_bias * (
+                    torch.rand(layer.bias.shape) * (max_abs_value - min_abs_value) + min_abs_value
+            )
+
 
 class LinearParallel(nn.Module):
     def __init__(self, in_dim, out_dim, parallel_dim):
