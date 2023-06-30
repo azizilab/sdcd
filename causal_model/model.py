@@ -35,6 +35,10 @@ class CausalModel:
         self._check_causal_mechanisms_graph_consistency()
 
     @property
+    def n_interventions(self):
+        return len(self.interventions)
+
+    @property
     def nodes(self):
         return self.graph.nodes
 
@@ -84,11 +88,11 @@ class CausalModel:
             subset_interventions (list): subset of interventions to consider. If None, all interventions are considered.
 
         Returns:
-            pd.DataFrame: dataset with the samples (one column per variable) and a column "intervention_label" that
-                indicates the intervention applied to each sample (or "control" if no intervention was applied).
+            pd.DataFrame: dataset with the samples (one column per variable) and a column "perturbation_label" that
+                indicates the intervention applied to each sample (or "obs" if no intervention was applied).
         """
         samples = self.sample_from_observational_distribution(n_samples_control)
-        samples["intervention_label"] = "control"
+        samples["perturbation_label"] = "obs"
         data = [pd.DataFrame(samples)]
 
         if subset_interventions is None:
@@ -97,7 +101,7 @@ class CausalModel:
             samples = self.sample_from_interventional_distribution(
                 n_samples_per_intervention, intervention_name
             )
-            samples["intervention_label"] = intervention_name
+            samples["perturbation_label"] = intervention_name
             samples = pd.DataFrame(samples)
             data.append(samples)
 
