@@ -86,10 +86,9 @@ def compute_metrics(B_pred_thresh, B_true):
         diff = B_true != B_pred_thresh
         score = diff.sum()
         shd = score - ((((diff + diff.transpose()) == 0) & (diff != 0)).sum() / 2)
-        recall = (B_true.astype(bool) & B_pred_thresh.astype(bool)).sum() / B_true.sum()
-        precision = (B_true.astype(bool) & B_pred_thresh.astype(bool)).sum() / (
-            B_pred_thresh
-        ).sum()
+        recall = (B_true.astype(bool) & B_pred_thresh.astype(bool)).sum() / np.clip(B_true.sum(), 1, None)
+        precision = (B_true.astype(bool) & B_pred_thresh.astype(bool)).sum() / np.clip(
+            B_pred_thresh.sum(), 1, None)
     else:
         recall = "na"
         precision = "na"

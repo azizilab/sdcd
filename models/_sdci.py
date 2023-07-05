@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Optional, Literal
 
 import numpy as np
 import torch
@@ -12,7 +12,7 @@ from modules import AutoEncoderLayers
 from train_utils import (
     compute_metrics,
 )
-from utils import print_graph_from_weights, move_modules_to_device
+from utils import print_graph_from_weights, move_modules_to_device, TorchStandardScaler
 
 from .base._base_model import BaseModel
 
@@ -43,8 +43,10 @@ _DEFAULT_STAGE2_KWARGS = {
 
 
 class SDCI(BaseModel):
-    def __init__(self):
+    def __init__(self, model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit", standard_scale: bool = True):
         super().__init__()
+        self.model_variance_flavor = model_variance_flavor
+        self.standard_scale = standard_scale
         self._stage1_kwargs = None
         self._stage2_kwargs = None
 
@@ -68,6 +70,11 @@ class SDCI(BaseModel):
         ps_batch_size = self._stage1_kwargs["batch_size"]
         batch_size = self._stage2_kwargs["batch_size"]
 
+        if self.standard_scale:
+            scaler = TorchStandardScaler()
+            scaled_X = scaler.fit_transform(dataset.tensors[0])
+            dataset = torch.utils.data.TensorDataset(scaled_X, *dataset.tensors[1:])
+
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
         assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
@@ -90,8 +97,9 @@ class SDCI(BaseModel):
         # Stage 1: Pre-selection
         self._ps_model = AutoEncoderLayers(
                 self.d,
-                [10, 1],
+                [10],
                 nn.Sigmoid(),
+                model_variance_flavor=self.model_variance_flavor,
                 shared_layers=False,
                 adjacency_p=2.0,
                 dag_penalty_flavor="none",
@@ -120,27 +128,28 @@ class SDCI(BaseModel):
 
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
-        mask = (
+        self._mask = (
             self._ps_model.get_adjacency_matrix().cpu().detach().numpy() > mask_threshold
         ).astype(int)
         if B_true is not None:
             print(
-                f"Recall of mask: {(B_true.astype(bool) & mask.astype(bool)).sum() / B_true.sum()}"
+                f"Recall of mask: {(B_true.astype(bool) & self._mask.astype(bool)).sum() / B_true.sum()}"
             )
         print(
-            f"Fraction of possible edges in mask: {mask.sum() / (mask.shape[0] * mask.shape[1])}"
+            f"Fraction of possible edges in mask: {self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])}"
         )
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
         self._model = AutoEncoderLayers(
                 self.d,
-                [10, 1],
+                [10],
             nn.Sigmoid(),
+            model_variance_flavor = self.model_variance_flavor,
             shared_layers=False,
             adjacency_p=2.0,
             dag_penalty_flavor=dag_penalty_flavor,
-            mask=mask,
+            mask=self._mask,
         )
         if device:
             move_modules_to_device(self._model, device)
@@ -163,6 +172,9 @@ class SDCI(BaseModel):
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
+
+        if log_wandb:
+            wandb.finish()
 
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."

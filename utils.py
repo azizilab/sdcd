@@ -28,6 +28,26 @@ def move_modules_to_device(module: nn.Module, device: Optional[torch.device]):
         move_modules_to_device(submodule, device)
 
 
+class TorchStandardScaler:
+    """
+    Standardizes data by subtracting the mean and dividing by the standard deviation.
+
+    From https://discuss.pytorch.org/t/pytorch-tensor-scaling/38576/8.
+    """
+    def fit(self, data):
+        self.mean = data.mean(0, keepdim=True)
+        self.std = data.std(0, unbiased=False, keepdim=True)
+
+    def transform(self, data):
+        data -= self.mean
+        data /= (self.std + 1e-7)
+        return data
+
+    def fit_transform(self, data):
+        self.fit(data)
+        return self.transform(data)
+
+
 def compute_p_vals(X_df):
     """Computes p-values of a KS test for each candidate edge of a causal graph given interventional data.
 
