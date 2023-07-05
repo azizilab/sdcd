@@ -121,9 +121,8 @@ def run_dagma(X_df, B_true, wandb_config_dict, wandb_project):
 
     return model.get_adjacency_matrix()
 
-def save_B_pred(
-    B_pred, n, d, seed, frac_interventions, method_name, dirname="saved_mtxs/"
-):
+
+def save_B_pred(B_pred, n, d, seed, frac_interventions, method_name, dirname="saved_mtxs/"):
     filename = f"B_pred_{n}_{d}_{seed}_{frac_interventions}_{method_name}.npy"
     # check if dir exists
     if not os.path.exists(dirname):
@@ -157,10 +156,10 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save
     if save_mtxs:
         save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
-    # if model == "all" or model == "sdci":
-    #     B_pred = run_sdci(X_df, B_true, wandb_config_dict, wandb_project)
-    #     if save_mtxs:
-    #         save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
+    if model == "all" or model == "sdci":
+        B_pred = run_sdci(X_df, B_true, wandb_config_dict, wandb_project)
+        if save_mtxs:
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
 
     if model == "all" or model == "dcdi":
         try:

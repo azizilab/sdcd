@@ -8,14 +8,14 @@ def random_model_gaussian_global_variance(n_nodes, n_edges, knockdown=0.1, scale
     causal_model = CausalModel(dag)
     observational_mechanisms = generate_gaussian_mlp_fixed_scale_mechanisms(
         causal_model, [100], scale=scale, activation="sigmoid"
-)
+    )
     causal_model.set_causal_mechanisms(observational_mechanisms)
 
     for i in range(n_nodes):
-        nodes = [str(i)]
+        nodes = [i]
         new_intervened_mechanisms = {
             n: scale_mechanism(observational_mechanisms[n], knockdown) for n in nodes
         }
-        causal_model.set_intervention(str(i), new_intervened_mechanisms)
+        causal_model.set_intervention(i, new_intervened_mechanisms)
 
     return causal_model
