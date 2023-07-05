@@ -5,14 +5,14 @@ import numpy as np
 import wandb
 
 import simulation
-from models._dagma import DAGMA
 from utils import set_random_seed_all
 from train_utils import (
     create_intervention_dataset,
     subset_interventions,
 )
+from simulated_data import random_model_gaussian_global_variance
 
-from models import SDCI, DCDI, DCDFG
+from models import SDCI, DCDI, DCDFG, DAGMA
 
 
 def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
@@ -135,10 +135,8 @@ def save_B_pred(B_pred, n, d, seed, frac_interventions, method_name, dirname="sa
 @click.command()
 @click.option("--n", default=50, help="Per interventional subset")
 @click.option("--d", default=20, type=int, help="Number of dimensions")
-@click.option(
-    "--n_edges_per_d", type=int, default=5, help="Number of edges per dimension"
-)
-@click.option("--seed", default=0, help="Random seed")
+@click.option("--n_edges_per_d", type=int, default=5, help="Number of edges per dimension")
+@click.option("--seed", default=1, help="Random seed")
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
     "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
@@ -150,9 +148,31 @@ def save_B_pred(B_pred, n, d, seed, frac_interventions, method_name, dirname="sa
     "--wandb-project", default="full-pipeline-simulation", help="Wandb project name"
 )
 def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project):
-    X_df, B_true, wandb_config_dict = generate_dataset(
-        n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d
+    n_edges = n_edges_per_d * d
+    knockdown_scaling = 0.0
+    n_interventions = int(frac_interventions * d)
+    set_random_seed_all(seed)
+
+    # X_df_old, B_true_old, wandb_config_dict, param_dict = generate_dataset(
+    #     n, d, 0, frac_interventions, n_edges_per_d=n_edges_per_d
+    # )
+    true_causal_model = random_model_gaussian_global_variance(d, n_edges, knockdown=knockdown_scaling)
+    B_true = true_causal_model.adjacency
+    interventions_names = np.random.choice(
+        list(true_causal_model.interventions.keys()), n_interventions, replace=False
     )
+    X_df = true_causal_model.generate_dataframe_from_all_distributions(
+        n_samples_control=n, n_samples_per_intervention=n, subset_interventions=interventions_names
+    )
+    wandb_config_dict = {
+        "n": n,
+        "d": d,
+        "n_edges_per_d": n_edges_per_d,
+        "seed": seed,
+        "frac_interventions": frac_interventions,
+        "knockdown_scaling": knockdown_scaling,
+    }
+
     if save_mtxs:
         save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
