@@ -132,22 +132,9 @@ def save_B_pred(B_pred, n, d, seed, frac_interventions, method_name, dirname="sa
     np.save(filepath, B_pred)
 
 
-@click.command()
-@click.option("--n", default=50, help="Per interventional subset")
-@click.option("--d", default=20, type=int, help="Number of dimensions")
-@click.option("--n_edges_per_d", type=int, default=5, help="Number of edges per dimension")
-@click.option("--seed", default=1, help="Random seed")
-@click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
-@click.option(
-    "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
-)
-@click.option(
-    "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
-)
-@click.option(
-    "--wandb-project", default="full-pipeline-simulation", help="Wandb project name"
-)
-def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project):
+def run_full_pipeline(
+    n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project
+):
     n_edges = n_edges_per_d * d
     knockdown_scaling = 0.0
     n_interventions = int(frac_interventions * d)
@@ -156,7 +143,9 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save
     # X_df_old, B_true_old, wandb_config_dict, param_dict = generate_dataset(
     #     n, d, 0, frac_interventions, n_edges_per_d=n_edges_per_d
     # )
-    true_causal_model = random_model_gaussian_global_variance(d, n_edges, knockdown=knockdown_scaling)
+    true_causal_model = random_model_gaussian_global_variance(
+        d, n_edges, knockdown=knockdown_scaling
+    )
     B_true = true_causal_model.adjacency
     interventions_names = np.random.choice(
         list(true_causal_model.interventions.keys()), n_interventions, replace=False
@@ -201,5 +190,24 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save
             save_B_pred(B_pred, n, d, seed, frac_interventions, "dagma")
 
 
+@click.command()
+@click.option("--n", default=100, help="Per interventional subset")
+@click.option("--d", default=20, type=int, help="Number of dimensions")
+@click.option("--n_edges_per_d", type=int, default=5, help="Number of edges per dimension")
+@click.option("--seed", default=0, help="Random seed")
+@click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
+@click.option(
+    "--model", default="sdci", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
+)
+@click.option("--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory")
+@click.option("--wandb-project", default="simulation", help="Wandb project name")
+def _run_full_pipeline(
+    n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project
+):
+    run_full_pipeline(
+        n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project
+    )
+
+
 if __name__ == "__main__":
-    run_full_pipeline()
+    _run_full_pipeline()

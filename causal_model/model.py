@@ -78,7 +78,12 @@ class CausalModel:
         subset_interventions: Optional[list] = None,
         seed: int = 0,
     ):
-        """Generate a dataset from the observational distribution and all the interventional distributions.
+        """Generate a dataset from the observational distribution and the interventional distributions (all or the
+        specified subset).
+        Note: even when a subset of interventions is specified, all the interventions are sampled, and only then they
+        are filtered. This ensures reproducibility of the dataset: the same dataset per intervention will be generated
+        even if the subset of interventions is changed (for a given seed).
+
 
         Args:
             n_samples_control (int): number of samples from the observational distribution
@@ -94,9 +99,7 @@ class CausalModel:
         samples["perturbation_label"] = "obs"
         data = [pd.DataFrame(samples)]
 
-        if subset_interventions is None:
-            subset_interventions = self.interventions.keys()
-        for intervention_name in subset_interventions:
+        for intervention_name in self.interventions.keys():
             samples = self.sample_from_interventional_distribution(
                 n_samples_per_intervention, intervention_name
             )
@@ -107,6 +110,9 @@ class CausalModel:
         data = pd.concat(data, ignore_index=True)
         # sort columns according to the node order of the graph, to be consistent with the adjacency matrix
         data = data[self.nodes + ["perturbation_label"]]
+        if subset_interventions is not None:
+            subset_interventions = set(subset_interventions) | {"obs"}
+            data = data[data["perturbation_label"].isin(subset_interventions)]
         return data
 
     def set_causal_mechanisms(self, causal_mechanisms):
