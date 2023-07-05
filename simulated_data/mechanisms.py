@@ -8,7 +8,7 @@ from causal_model.mechanisms import ParametricConditionalDistribution
 from modules import DenseLayers
 
 
-class MLP(torch.nn.Module):
+class ParentsToChildMLP(torch.nn.Module):
     """A dense neural networks that takes as input the values of the parents of a given variable and outputs the
     parameters of the distribution of that variable.
 
@@ -30,6 +30,7 @@ class MLP(torch.nn.Module):
         outputs_transform: Optional[dict[str, torch.nn.Module]] = None,
         activation: Union[str, torch.nn.Module] = "relu",
         extra_outputs: Optional[dict] = None,
+        **kwargs,
     ):
         super().__init__()
         self.parent_names = parent_names
@@ -46,11 +47,11 @@ class MLP(torch.nn.Module):
             self.mlp = None
         else:
             self.mlp = DenseLayers(
-                self.n_parents, self.n_outputs, hidden_dims, activation=activation
+                self.n_parents, self.n_outputs, hidden_dims, activation=activation, **kwargs
             )
             self.mlp.reset_parameters_away_from_zero()
 
-    def forward(self, **parents_values):
+    def forward(self, parents_values):
         if len(parents_values) != self.n_parents:
             raise ValueError("Wrong number of parents")
         if self.n_parents == 0:
@@ -77,6 +78,7 @@ def generate_gaussian_mlp_fixed_scale_mechanisms(
     default_mean: float = 0.0,
     scale: Union[float, Callable] = 1.0,
     activation: str = "relu",
+    **kwargs,
 ):
     """Generate a dictionary of Gaussian conditional MLP mechanisms with fixed variance for each node in the graph.
     The variance can be a fixed value or a function of the depth of the node in the graph.
@@ -93,9 +95,7 @@ def generate_gaussian_mlp_fixed_scale_mechanisms(
     Returns:
         a dictionary of mechanisms for each node in the graph.
     """
-    if type(scale) == float:
-        scale_value = scale
-    else:
+    if type(scale) not in [float, int]:
         # compute the depth of each node, start from the root nodes and go down
         node_depth = {}
         for node in nx.topological_sort(causal_model.graph):
@@ -108,16 +108,17 @@ def generate_gaussian_mlp_fixed_scale_mechanisms(
     mechanisms = {}
     for node in causal_model.nodes:
         parents = causal_model.get_parents(node)
-        if type(scale) == float:
+        if type(scale) in [float, int]:
             scale_value = scale
         else:
             scale_value = scale(node_depth[node])
-        conditional_parameter_func = MLP(
+        conditional_parameter_func = ParentsToChildMLP(
             parents,
             hidden_dims,
             {"loc": default_mean},
             activation=activation,
             extra_outputs={"scale": scale_value},
+            **kwargs,
         )
         mechanisms[node] = ParametricConditionalDistribution(
             conditional_parameter_func, torch.distributions.Normal, parents
@@ -147,7 +148,7 @@ def generate_gaussian_mlp_mechanisms(
     mechanisms = {}
     for node in causal_model.nodes:
         parents = causal_model.get_parents(node)
-        conditional_parameter_func = MLP(
+        conditional_parameter_func = ParentsToChildMLP(
             parents,
             hidden_dims,
             outputs_with_defaults={"loc": default_mean, "scale": default_scale},

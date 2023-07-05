@@ -13,15 +13,15 @@ from torch.distributions import Distribution, AffineTransform, TransformedDistri
 
 class ConditionalDistribution(abc.ABC):
     @abc.abstractmethod
-    def compute_distribution_from_parents(self, **parents_values) -> Distribution:
+    def compute_distribution_from_parents(self, parents_values) -> Distribution:
         pass
 
     @abc.abstractmethod
     def get_parents(self) -> list[str]:
         pass
 
-    def sample(self, sample_shape, **parents_values):
-        return self.compute_distribution_from_parents(**parents_values).sample(sample_shape)
+    def sample(self, sample_shape, parents_values):
+        return self.compute_distribution_from_parents(parents_values).sample(sample_shape)
 
 
 Mechanism = Union[Distribution, ConditionalDistribution]
@@ -61,8 +61,8 @@ class ParametricConditionalDistribution(ConditionalDistribution):
     def get_parents(self) -> list[str]:
         return self.parent_names
 
-    def compute_distribution_from_parents(self, **kwargs) -> Distribution:
-        conditional_parameters = self.conditional_parameters_func(**kwargs)
+    def compute_distribution_from_parents(self, parent_values) -> Distribution:
+        conditional_parameters = self.conditional_parameters_func(parent_values)
         response_distribution = self.response_distribution_constructor(**conditional_parameters)
         return response_distribution
 

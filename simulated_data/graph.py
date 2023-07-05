@@ -2,15 +2,10 @@ import networkx as nx
 import numpy as np
 
 
-def _relabel_node_to_str(graph):
-    """Relabel the nodes of a graph to str."""
-    return nx.relabel_nodes(graph, {node: str(node) for node in graph.nodes if type(node) != str})
-
-
 def chain_graph(n_variables=20):
     """Return a chain graph."""
     graph = nx.DiGraph()
-    nodes = [str(i) for i in range(n_variables)]
+    nodes = [i for i in range(n_variables)]
     graph.add_nodes_from(nodes)
     for a, b in zip(nodes[:-1], nodes[1:]):
         graph.add_edge(a, b)
@@ -52,5 +47,4 @@ def random_dag(n_nodes: int = 20, n_edges: int = 20, distribution: str = "unifor
     else:
         raise ValueError(f"Unknown distribution {distribution}.")
 
-    graph = _relabel_node_to_str(graph)
     return random_dag_from_undirected_graph(graph)

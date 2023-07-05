@@ -4,6 +4,8 @@ from typing import Optional
 import networkx as nx
 import pandas as pd
 
+from utils import set_random_seed_all
+
 
 class CausalModel:
     """A causal model is based on a causal graph, which is a directed acyclic graph (DAG) where each node represents a
@@ -20,11 +22,6 @@ class CausalModel:
     def __init__(
         self, graph: nx.DiGraph, causal_mechanisms: dict = None, interventions: dict = None
     ):
-        # make sure each variable name is a string to be able to call the parents as kwargs
-        for n in graph:
-            if not isinstance(n, str):
-                raise ValueError(f"The node names must be str, {n}")
-
         self.graph = graph
         self.causal_mechanisms = causal_mechanisms if causal_mechanisms is not None else dict()
         self.interventions = interventions if interventions is not None else defaultdict(dict)
@@ -39,8 +36,8 @@ class CausalModel:
         return len(self.interventions)
 
     @property
-    def nodes(self):
-        return self.graph.nodes
+    def nodes(self) -> list:
+        return list(self.graph.nodes)
 
     def get_parents(self, node):
         """Return the parents of a variable."""
@@ -61,7 +58,7 @@ class CausalModel:
                 distribution = self.causal_mechanisms[node]
             sample_shape = [n_samples] if len(parents) == 0 else []
             samples_per_node[node] = distribution.sample(
-                sample_shape=sample_shape, **parents_values
+                sample_shape=sample_shape, parents_values=parents_values
             )
 
         return samples_per_node
@@ -79,6 +76,7 @@ class CausalModel:
         n_samples_control: int = 1_000,
         n_samples_per_intervention: int = 100,
         subset_interventions: Optional[list] = None,
+        seed: int = 0,
     ):
         """Generate a dataset from the observational distribution and all the interventional distributions.
 
@@ -86,11 +84,12 @@ class CausalModel:
             n_samples_control (int): number of samples from the observational distribution
             n_samples_per_intervention (int): number of samples from each interventional distribution
             subset_interventions (list): subset of interventions to consider. If None, all interventions are considered.
-
+            seed (int): random seed
         Returns:
             pd.DataFrame: dataset with the samples (one column per variable) and a column "perturbation_label" that
                 indicates the intervention applied to each sample (or "obs" if no intervention was applied).
         """
+        set_random_seed_all(seed)
         samples = self.sample_from_observational_distribution(n_samples_control)
         samples["perturbation_label"] = "obs"
         data = [pd.DataFrame(samples)]
@@ -106,6 +105,8 @@ class CausalModel:
             data.append(samples)
 
         data = pd.concat(data, ignore_index=True)
+        # sort columns according to the node order of the graph, to be consistent with the adjacency matrix
+        data = data[self.nodes + ["perturbation_label"]]
         return data
 
     def set_causal_mechanisms(self, causal_mechanisms):
