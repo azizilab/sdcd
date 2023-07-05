@@ -7,7 +7,7 @@ def random_model_gaussian_global_variance(n_nodes, n_edges, knockdown=0.1, scale
     dag = random_dag(n_nodes, n_edges)
     causal_model = CausalModel(dag)
     observational_mechanisms = generate_gaussian_mlp_fixed_scale_mechanisms(
-        causal_model, [100], scale=scale, activation="sigmoid"
+        causal_model, [100], scale=scale, activation="sigmoid", bias=False
     )
     causal_model.set_causal_mechanisms(observational_mechanisms)
 
