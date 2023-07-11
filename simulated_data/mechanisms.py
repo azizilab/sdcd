@@ -20,6 +20,11 @@ class ParentsToChildMLP(torch.nn.Module):
         hidden_dims: the dimensions of the hidden layers.
         outputs_with_defaults: a dictionary with the names of the outputs as keys and the default values as values.
         outputs_transform: a dictionary to optionally specify a transformation to apply to some outputs.
+        activation: the activation function to use.
+        extra_outputs: a dictionary with extra outputs to add to the output of the MLP.
+        normalize_inputs: whether to normalize the input of each layer. This is useful with random layers since the
+            non-trivial variations of random variables are around 0 (with high probability).
+        kwargs: additional arguments to pass to the DenseLayers module. (e.g. bias)
     """
 
     def __init__(
@@ -30,6 +35,7 @@ class ParentsToChildMLP(torch.nn.Module):
         outputs_transform: Optional[dict[str, torch.nn.Module]] = None,
         activation: Union[str, torch.nn.Module] = "relu",
         extra_outputs: Optional[dict] = None,
+        normalize_inputs: bool = True,
         **kwargs,
     ):
         super().__init__()
@@ -39,6 +45,9 @@ class ParentsToChildMLP(torch.nn.Module):
         self.outputs_transform = outputs_transform
         self.activation = activation
         self.extra_outputs = extra_outputs
+        self.normalize_inputs = normalize_inputs
+        self.input_normalization_mean = None
+        self.input_normalization_std = None
 
         n_parents = len(parent_names)
         self.n_parents = n_parents
@@ -52,6 +61,20 @@ class ParentsToChildMLP(torch.nn.Module):
             self.mlp.reset_parameters_away_from_zero()
 
     def forward(self, parents_values):
+        if self.normalize_inputs:
+            if self.input_normalization_mean is None:
+                # compute the mean and std of the inputs
+                self.input_normalization_mean = {
+                    name: value.mean() for name, value in parents_values.items()
+                }
+                self.input_normalization_std = {
+                    name: value.std() for name, value in parents_values.items()
+                }
+            parents_values = {
+                name: (value - self.input_normalization_mean[name])
+                / self.input_normalization_std[name]
+                for name, value in parents_values.items()
+            }
         if len(parents_values) != self.n_parents:
             raise ValueError("Wrong number of parents")
         if self.n_parents == 0:
