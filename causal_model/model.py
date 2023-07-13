@@ -4,7 +4,7 @@ from typing import Optional
 import networkx as nx
 import pandas as pd
 
-from utils import set_random_seed_all
+from .utils import set_random_seed_all
 
 
 class CausalModel:
@@ -20,11 +20,18 @@ class CausalModel:
     """
 
     def __init__(
-        self, graph: nx.DiGraph, causal_mechanisms: dict = None, interventions: dict = None
+        self,
+        graph: nx.DiGraph,
+        causal_mechanisms: dict = None,
+        interventions: dict = None,
     ):
         self.graph = graph
-        self.causal_mechanisms = causal_mechanisms if causal_mechanisms is not None else dict()
-        self.interventions = interventions if interventions is not None else defaultdict(dict)
+        self.causal_mechanisms = (
+            causal_mechanisms if causal_mechanisms is not None else dict()
+        )
+        self.interventions = (
+            interventions if interventions is not None else defaultdict(dict)
+        )
 
         self.variables = list(self.graph.nodes)
         self.adjacency = nx.to_numpy_array(self.graph)
@@ -44,9 +51,14 @@ class CausalModel:
         return sorted(self.graph.predecessors(node))
 
     def sample_from_model(self, n_samples, intervention_name=None):
-        if intervention_name is not None and intervention_name not in self.interventions:
+        if (
+            intervention_name is not None
+            and intervention_name not in self.interventions
+        ):
             raise ValueError(f"Intervention does not exist, {intervention_name}")
-        interventions = {} if intervention_name is None else self.interventions[intervention_name]
+        interventions = (
+            {} if intervention_name is None else self.interventions[intervention_name]
+        )
 
         samples_per_node = dict()
         for node in nx.topological_sort(self.graph):

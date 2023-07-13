@@ -3,7 +3,7 @@ import wandb
 
 from full_pipeline_main import generate_dataset
 from models import SDCI
-from train_utils import create_intervention_dataset
+from models.train_utils import create_intervention_dataset
 
 
 seed = 0
@@ -38,6 +38,3 @@ metrics_dict["train_time"] = model._train_runtime_in_sec
 
 wandb.log(metrics_dict)
 wandb.finish()
-
-
-

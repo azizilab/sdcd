@@ -12,7 +12,7 @@ from modules import AutoEncoderLayers
 from train_utils import (
     compute_metrics,
 )
-from utils import print_graph_from_weights, move_modules_to_device, TorchStandardScaler
+from .utils import print_graph_from_weights, move_modules_to_device, TorchStandardScaler
 
 from .base._base_model import BaseModel
 
@@ -43,7 +43,11 @@ _DEFAULT_STAGE2_KWARGS = {
 
 
 class SDCI(BaseModel):
-    def __init__(self, model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit", standard_scale: bool = True):
+    def __init__(
+        self,
+        model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
+        standard_scale: bool = True,
+    ):
         super().__init__()
         self.model_variance_flavor = model_variance_flavor
         self.standard_scale = standard_scale
@@ -83,38 +87,38 @@ class SDCI(BaseModel):
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
-                    project=wandb_project,
-                    name="SDCI",
-                    config={
-                        "batch_size": batch_size,
-                        "stage1_kwargs": self._stage1_kwargs,
-                        "stage2_kwargs": self._stage2_kwargs,
-                        **wandb_config_dict,
-                        },
-                    )
+                project=wandb_project,
+                name="SDCI",
+                config={
+                    "batch_size": batch_size,
+                    "stage1_kwargs": self._stage1_kwargs,
+                    "stage2_kwargs": self._stage2_kwargs,
+                    **wandb_config_dict,
+                },
+            )
 
         start = time.time()
         # Stage 1: Pre-selection
         self._ps_model = AutoEncoderLayers(
-                self.d,
-                [10],
-                nn.Sigmoid(),
-                model_variance_flavor=self.model_variance_flavor,
-                shared_layers=False,
-                adjacency_p=2.0,
-                dag_penalty_flavor="none",
-                )
+            self.d,
+            [10],
+            nn.Sigmoid(),
+            model_variance_flavor=self.model_variance_flavor,
+            shared_layers=False,
+            adjacency_p=2.0,
+            dag_penalty_flavor="none",
+        )
         if device:
             move_modules_to_device(self._ps_model, device)
 
         ps_optimizer = torch.optim.Adam(
-                self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
-                )
+            self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
+        )
 
         ps_kwargs = {
-                **self._stage1_kwargs,
-                "threshold": self.threshold,
-                }
+            **self._stage1_kwargs,
+            "threshold": self.threshold,
+        }
         self._ps_model = _train(
             self._ps_model,
             ps_dataloader,
@@ -129,7 +133,8 @@ class SDCI(BaseModel):
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
         self._mask = (
-            self._ps_model.get_adjacency_matrix().cpu().detach().numpy() > mask_threshold
+            self._ps_model.get_adjacency_matrix().cpu().detach().numpy()
+            > mask_threshold
         ).astype(int)
         if B_true is not None:
             print(
@@ -142,10 +147,10 @@ class SDCI(BaseModel):
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
         self._model = AutoEncoderLayers(
-                self.d,
-                [10],
+            self.d,
+            [10],
             nn.Sigmoid(),
-            model_variance_flavor = self.model_variance_flavor,
+            model_variance_flavor=self.model_variance_flavor,
             shared_layers=False,
             adjacency_p=2.0,
             dag_penalty_flavor=dag_penalty_flavor,
