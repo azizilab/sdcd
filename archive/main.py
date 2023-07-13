@@ -3,7 +3,7 @@ from torch import nn
 import torch.utils.data
 
 import external.dagma.utils
-from models.utils import set_random_seed_all
+from utils import set_random_seed_all
 from archive.autoencoder import AutoEncoder
 
 import matplotlib.pyplot as plt

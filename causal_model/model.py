@@ -4,7 +4,7 @@ from typing import Optional
 import networkx as nx
 import pandas as pd
 
-from .utils import set_random_seed_all
+from utils import set_random_seed_all
 
 
 class CausalModel:

@@ -9,10 +9,12 @@ import wandb
 import networkx as nx
 
 from modules import AutoEncoderLayers
-from train_utils import (
+from utils import (
+    print_graph_from_weights,
+    move_modules_to_device,
+    TorchStandardScaler,
     compute_metrics,
 )
-from .utils import print_graph_from_weights, move_modules_to_device, TorchStandardScaler
 
 from .base._base_model import BaseModel
 

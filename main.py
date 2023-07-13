@@ -5,7 +5,7 @@ from torch import nn
 
 import simulated_data.deprecated_simulation as deprecated_simulation
 from modules import AutoEncoderLayers
-from models.utils import set_random_seed_all, print_graph_from_weights
+from utils import set_random_seed_all, print_graph_from_weights
 
 set_random_seed_all(0)
 

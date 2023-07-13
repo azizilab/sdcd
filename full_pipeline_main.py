@@ -5,8 +5,8 @@ import numpy as np
 import wandb
 
 import simulated_data.deprecated_simulation as deprecated_simulation
-from models.utils import set_random_seed_all
-from models.train_utils import (
+from utils import (
+    set_random_seed_all,
     create_intervention_dataset,
     subset_interventions,
 )
