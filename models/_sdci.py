@@ -61,6 +61,7 @@ class SDCI(BaseModel):
         dataset: Dataset,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
+        wandb_name: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
@@ -90,7 +91,7 @@ class SDCI(BaseModel):
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
-                name="SDCI",
+                name=wandb_name,
                 config={
                     "batch_size": batch_size,
                     "stage1_kwargs": self._stage1_kwargs,

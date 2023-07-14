@@ -3,7 +3,7 @@ import wandb
 
 from full_pipeline_main import generate_dataset
 from models import SDCI
-from train_utils import create_intervention_dataset
+from utils import create_intervention_dataset
 
 
 seed = 0

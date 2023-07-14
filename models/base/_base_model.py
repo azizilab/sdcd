@@ -4,7 +4,7 @@ from typing import Optional
 import numpy as np
 from torch.utils.data import Dataset
 
-from train_utils import (
+from utils import (
     compute_metrics,
 )
 

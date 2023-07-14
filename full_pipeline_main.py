@@ -45,7 +45,9 @@ def generate_dataset_deprecated(n, d, seed, frac_interventions, n_edges_per_d=5)
     return X_df, B_true, wandb_config_dict
 
 
-def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5, dataset="ER"):
+def generate_dataset(
+    n, d, seed, frac_interventions, n_edges_per_d=5, dataset="ER", scale=None, normalize=False
+):
     assert n_edges_per_d < d
     n_edges = n_edges_per_d * d
     knockdown_scaling = 0.0
@@ -53,9 +55,9 @@ def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5, dataset="E
 
     set_random_seed_all(seed)
     if dataset == "ER":
-        scale = 0.5
+        scale = scale or 0.5
     elif dataset == "chain":
-        scale = lambda depth: 2 * (d - depth) / d
+        scale = scale or (lambda depth: 2 * (d - depth) / d)
     else:
         raise ValueError(f"dataset type {dataset} not recognized")
 
@@ -71,14 +73,16 @@ def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5, dataset="E
         list(true_causal_model.interventions.keys()), n_interventions, replace=False
     )
     X_df = true_causal_model.generate_dataframe_from_all_distributions(
-        n_samples_control=n,
+        n_samples_control=n * (d + 1),
         n_samples_per_intervention=n,
         subset_interventions=interventions_names,
     )
     # normalize the data (except the last column, which is the intervention indicator)
-    X_df.iloc[:, :-1] = (X_df.iloc[:, :-1] - X_df.iloc[:, :-1].mean()) / X_df.iloc[
-        :, :-1
-    ].std()
+    if normalize:
+        X_df.iloc[:, :-1] = (X_df.iloc[:, :-1] - X_df.iloc[:, :-1].mean()) / X_df.iloc[
+            :, :-1
+        ].std()
+
     wandb_config_dict = {
         "n": n,
         "d": d,
@@ -86,6 +90,7 @@ def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5, dataset="E
         "seed": seed,
         "frac_interventions": frac_interventions,
         "knockdown_scaling": knockdown_scaling,
+        "normalized": normalize,
     }
 
     return X_df, B_true, wandb_config_dict
