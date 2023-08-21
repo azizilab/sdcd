@@ -216,6 +216,7 @@ class AutoEncoderLayers(nn.Module):
         mask=None,
         warmstart=False,
         dag_penalty_flavor: Literal["scc", "power_iteration", "logdet", "none"] = "scc",
+        l2_on_dispatcher: bool = True,
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -224,6 +225,7 @@ class AutoEncoderLayers(nn.Module):
         self.model_variance_flavor = model_variance_flavor
         self.shared_layers = shared_layers
         self.adjacency_p = adjacency_p
+        self.l2_on_dispatcher = l2_on_dispatcher
 
         if (
             self.model_variance_flavor == "nn"
@@ -349,7 +351,14 @@ class AutoEncoderLayers(nn.Module):
         return torch.sum(torch.abs(self.layers[0].weight))
 
     def l2_reg_all_weights(self):
-        return sum([torch.sum(p**2) for p in self.parameters() if p.requires_grad])
+        return sum(
+            [
+                torch.sum(p**2)
+                for p_name, p in self.named_parameters()
+                if p.requires_grad
+                and (p_name != "layers.0._weight" or self.l2_on_dispatcher)
+            ]
+        )
 
     def dag_reg(self):
         A = self.get_adjacency_matrix() ** 2

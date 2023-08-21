@@ -1,12 +1,12 @@
 external/*
 __pycache__/*
 **/__pycache__/*
-notebooks/.ipynb_checkpoints/*.ipynb
+notebooks/.ipynb_checkpoints/**
+notebooks/.DS_Store
 **/wandb/*
 saved_mtxs/*
 saved_mtxs_old/*
 .DS_Store
-notebooks/.DS_Store
 **.pyc
 full-pipeline-simulation-*
 .vscode/*

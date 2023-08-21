@@ -48,7 +48,7 @@ class SDCI(BaseModel):
     def __init__(
         self,
         model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
-        standard_scale: bool = True,
+        standard_scale: bool = False,
     ):
         super().__init__()
         self.model_variance_flavor = model_variance_flavor
@@ -68,6 +68,7 @@ class SDCI(BaseModel):
         stage2_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
+        l2_on_dispatcher: bool = True,
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
@@ -79,8 +80,8 @@ class SDCI(BaseModel):
 
         if self.standard_scale:
             scaler = TorchStandardScaler()
-            scaled_X = scaler.fit_transform(dataset.tensors[0])
-            dataset = torch.utils.data.TensorDataset(scaled_X, *dataset.tensors[1:])
+            scaled_X = scaler.fit_transform(dataset[:][0])
+            dataset = torch.utils.data.TensorDataset(scaled_X, *dataset[:][1:])
 
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
@@ -88,6 +89,9 @@ class SDCI(BaseModel):
         self.d = sample_batch[0].shape[1]
 
         if log_wandb:
+            if wandb.run is not None:
+                wandb.finish()  # Close previous run
+
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
@@ -110,6 +114,7 @@ class SDCI(BaseModel):
             shared_layers=False,
             adjacency_p=2.0,
             dag_penalty_flavor="none",
+            l2_on_dispatcher=l2_on_dispatcher,
         )
         if device:
             move_modules_to_device(self._ps_model, device)
@@ -158,6 +163,7 @@ class SDCI(BaseModel):
             adjacency_p=2.0,
             dag_penalty_flavor=dag_penalty_flavor,
             mask=self._mask,
+            l2_on_dispatcher=l2_on_dispatcher,
         )
         if device:
             move_modules_to_device(self._model, device)
@@ -180,9 +186,6 @@ class SDCI(BaseModel):
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
-
-        if log_wandb:
-            wandb.finish()
 
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
