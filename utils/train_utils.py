@@ -58,8 +58,6 @@ def create_intervention_dataset(
     combined_columns = unstacked_perturbation_columns.apply(lambda row: ','.join([str(val) for val in row if val != -1]), axis=1)
     
     if regime_format:
-        regimes = combined_columns.copy()
-        
         # Split comma-separated strings and convert to a binary matrix
         def string_to_binary(row):
             if row == '':
@@ -71,7 +69,8 @@ def create_intervention_dataset(
         mask_interventions_oh = combined_columns.apply(string_to_binary)
         
         mask_interventions_oh = pd.DataFrame(np.vstack(mask_interventions_oh.to_numpy()), columns=X_df.columns[:-1])
-        return torch.utils.data.TensorDataset(X, mask_interventions_oh, regimes)
+        n_regimes = torch.LongTensor(X_df.shape[1] - 1 - mask_interventions_oh.sum(axis=1))
+        return torch.utils.data.TensorDataset(X, mask_interventions_oh, n_regimes)
         
     max_perturbations = unstacked_perturbation_columns.applymap(lambda x: x != -1).sum(axis=1).max()
     if max_perturbations > 1:
