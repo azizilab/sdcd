@@ -187,6 +187,25 @@ class SDCI(BaseModel):
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
+    def compute_min_dag_threshold(self) -> float:
+        def is_acyclic(adj_matrix):
+            return nx.is_directed_acyclic_graph(nx.DiGraph(adj_matrix))
+
+        def bisect(func, a, b, tol=1e-5):
+            mid = (a + b) / 2.0
+            while (b - a) / 2.0 > tol:
+                if func(mid) == True:
+                    b = mid
+                else:
+                    a = mid
+                mid = (a + b) / 2.0
+            return mid
+
+        adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
+        func = lambda threshold: is_acyclic(adj_matrix > threshold)
+        self.threshold = bisect(func, 0, 1)
+        return self.threshold 
+
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
