@@ -85,7 +85,7 @@ class SDCI(BaseModel):
 
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
-        assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
+        assert len(sample_batch) == 3, "Dataset should contain (X, masks, regimes)"
         self.d = sample_batch[0].shape[1]
 
         if log_wandb:
