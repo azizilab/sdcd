@@ -44,31 +44,39 @@ def subset_interventions(
 
 def create_intervention_dataset(
     X_df,
-    obs_label="obs",
     perturbation_colname="perturbation_label",
-    regime_format=False,
+    regime_format=True,
 ):
     X = torch.FloatTensor(
         X_df.drop(perturbation_colname, axis=1).to_numpy().astype(float)
     )
     # ensure interventions are ints mapping to index of column
     column_mapping = {c: i for i, c in enumerate(X_df.columns[:-1])}
-    column_mapping[obs_label] = -1
-    interventions = torch.LongTensor(
-        X_df[perturbation_colname].map(column_mapping).values
-    ).reshape((-1, 1))
-
+    
+    # Split the perturbation_colname by comma and map each value to its column index
+    unstacked_perturbation_columns = X_df[perturbation_colname].str.split(',', expand=True).stack().map(column_mapping).fillna(-1).astype(int).unstack(fill_value=-1)
+    combined_columns = unstacked_perturbation_columns.apply(lambda row: ','.join([str(val) for val in row if val != -1]), axis=1)
+    
     if regime_format:
-        regimes = interventions.clone()
-        interventions[torch.where(interventions == -1)] = X_df.shape[1] - 1
-        interventions_oh = nn.functional.one_hot(
-            interventions.squeeze(), num_classes=X_df.shape[1]
-        )[
-            :, :-1
-        ]  # cutoff obs
-        mask_interventions_oh = 1 - interventions_oh
+        regimes = combined_columns.copy()
+        
+        # Split comma-separated strings and convert to a binary matrix
+        def string_to_binary(row):
+            if row == '':
+                return np.ones(X_df.shape[1] - 1, dtype=int)
+            else:
+                indices = set(map(int, row.split(',')))
+                return np.array([0 if i in indices else 1 for i in range(X_df.shape[1] - 1)])
+        
+        mask_interventions_oh = combined_columns.apply(string_to_binary)
+        
+        mask_interventions_oh = pd.DataFrame(np.vstack(mask_interventions_oh.to_numpy()), columns=X_df.columns[:-1])
         return torch.utils.data.TensorDataset(X, mask_interventions_oh, regimes)
-
+        
+    max_perturbations = unstacked_perturbation_columns.applymap(lambda x: x != -1).sum(axis=1).max()
+    if max_perturbations > 1:
+        raise ValueError("Non regime format for multiple perturbations is unsupported")
+    interventions = torch.LongTensor(pd.to_numeric(combined_columns, 'coerce').fillna(-1).astype(int))
     return torch.utils.data.TensorDataset(X, interventions)
 
 

@@ -97,7 +97,7 @@ def generate_dataset(
 
 
 def run_sdci(X_df, B_true, wandb_config_dict, wandb_project):
-    dataset = create_intervention_dataset(X_df, regime_format=False)
+    dataset = create_intervention_dataset(X_df, regime_format=True)
     wandb_config_dict["model"] = "SDCI"
     model = SDCI()
     model.train(
@@ -136,7 +136,7 @@ def run_dcdi(X_df, B_true, wandb_config_dict, wandb_project):
 
 
 def run_dcdfg(X_df, B_true, wandb_config_dict, wandb_project):
-    dataset = create_intervention_dataset(X_df, regime_format=False)
+    dataset = create_intervention_dataset(X_df, regime_format=True)
     wandb_config_dict["model"] = "DCDFG"
     model = DCDFG()
     model.train(

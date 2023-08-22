@@ -10,3 +10,4 @@ saved_mtxs_old/*
 **.pyc
 full-pipeline-simulation-*
 .vscode/*
+checkpoints/**

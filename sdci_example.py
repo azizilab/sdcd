@@ -15,7 +15,7 @@ X_df, B_true, wandb_config_dict = generate_dataset(
     n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d
 )
 print("Dataset generated")
-dataset = create_intervention_dataset(X_df, regime_format=False)
+dataset = create_intervention_dataset(X_df, regime_format=True)
 model = SDCI()
 model.train(
     dataset,

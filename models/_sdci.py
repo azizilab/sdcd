@@ -251,10 +251,10 @@ def _train(
         epoch_loss = 0
         epoch_loss_details = []
         for batch in dataloader:
-            X_batch, interventions_batch = batch
+            X_batch, mask_interventions_oh, _ = batch
             if device:
                 X_batch = X_batch.to(device)
-                interventions_batch = interventions_batch.to(device)
+                mask_interventions_oh = mask_interventions_oh.to(device)
 
             optimizer.zero_grad()
             loss, loss_details = model.loss(
@@ -263,7 +263,7 @@ def _train(
                 beta,
                 gamma,
                 n_observations,
-                interventions=interventions_batch,
+                mask_interventions_oh=mask_interventions_oh,
                 return_detailed_losses=True,
             )
             loss.backward()

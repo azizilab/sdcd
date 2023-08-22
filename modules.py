@@ -325,17 +325,10 @@ class AutoEncoderLayers(nn.Module):
         for layer in self.layers:
             layer.reset_parameters()
 
-    def reconstruction_loss(self, x, interventions=None):
+    def reconstruction_loss(self, x, mask_interventions_oh=None):
         x_mean, x_var = self(x)
 
-        if interventions is not None:
-            interventions[torch.where(interventions == -1)] = x.shape[1]
-            interventions_oh = nn.functional.one_hot(
-                interventions.squeeze(), num_classes=x.shape[1] + 1
-            )
-            interventions_oh = interventions_oh[:, :-1]  # cutoff obs
-            mask_interventions_oh = 1 - interventions_oh
-        else:
+        if mask_interventions_oh is None:
             mask_interventions_oh = torch.ones_like(x_mean)
 
         nll = -(
@@ -380,10 +373,10 @@ class AutoEncoderLayers(nn.Module):
         beta=1.0,
         gamma=1.0,
         n_observations=None,
-        interventions=None,
+        mask_interventions_oh=None,
         return_detailed_losses=False,
     ):
-        nll = self.reconstruction_loss(x, interventions=interventions)
+        nll = self.reconstruction_loss(x, mask_interventions_oh=mask_interventions_oh)
         l1_reg = alpha * self.l1_reg_dispatcher()  # * n_obs_norm
         l2_reg = beta * self.l2_reg_all_weights()  # * n_obs_norm
         # mu = 1 / gamma
