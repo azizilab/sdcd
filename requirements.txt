@@ -2,7 +2,7 @@ click
 scipy
 torch
 python-igraph
-matplotlib
+matplotlib<3.7
 seaborn
 scikit-learn
 wandb
@@ -16,5 +16,5 @@ pandas==1.4.0
 pytorch_lightning==1.5.10
 scanpy==1.9.1
 setuptools==59.5.0
-torch==1.10.2
+torch
 tqdm==4.62.3
