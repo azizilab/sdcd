@@ -35,6 +35,7 @@ _DEFAULT_STAGE2_KWARGS = {
     "n_epochs": 1_000,
     "alpha": 5e-3,
     "max_gamma": 300,
+    "gamma_schedule": "linear",
     "beta": 5e-3,
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.5,
@@ -229,7 +230,13 @@ def _train(
     n_epochs = config["n_epochs"]
     alpha = config["alpha"]
     max_gamma = config["max_gamma"]
-    gammas = np.linspace(0, max_gamma, n_epochs)
+    gamma_schedule = config.get("gamma_schedule", "linear")
+    if gamma_schedule == "linear":
+        gammas = np.linspace(0, max_gamma, n_epochs)
+    elif gamma_schedule == "exponential":
+        gammas = np.exp(np.linspace(0, np.log(max_gamma), n_epochs))
+    else:
+        raise ValueError(f"Unknown gamma schedule {gamma_schedule}.")
     beta = config["beta"]
     threshold = config["threshold"]
     freeze_gamma_at_dag = config.get("freeze_gamma_at_dag", False)
