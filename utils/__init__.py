@@ -2,6 +2,7 @@ from .train_utils import (
     subset_interventions,
     create_intervention_dataset,
     create_intervention_dataloader,
+    train_val_split,
     compute_metrics,
 )
 from .utils import (
