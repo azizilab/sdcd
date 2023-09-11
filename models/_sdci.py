@@ -138,6 +138,7 @@ class SDCI(BaseModel):
             **self._stage1_kwargs,
             "threshold": self.threshold,
         }
+        train_kwargs = train_kwargs or {}
         self._ps_model = _train(
             self._ps_model,
             ps_dataloader,
