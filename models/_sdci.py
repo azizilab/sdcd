@@ -61,7 +61,7 @@ class SDCI(BaseModel):
     def train(
         self,
         dataset: Dataset,
-        validation_dataset: Optional[Dataset] = None,
+        val_dataset: Optional[Dataset] = None,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_name: str = "SDCI",
@@ -86,15 +86,13 @@ class SDCI(BaseModel):
             scaler = TorchStandardScaler()
             scaled_X = scaler.fit_transform(dataset[:][0])
             dataset = torch.utils.data.TensorDataset(scaled_X, *dataset[:][1:])
-            validation_dataset = torch.utils.data.TensorDataset(
-                scaler.transform(validation_dataset[:][0]), *validation_dataset[:][1:]
+            val_dataset = torch.utils.data.TensorDataset(
+                scaler.transform(val_dataset[:][0]), *val_dataset[:][1:]
             )
 
-        validation_dataloader = None
-        if validation_dataset is not None:
-            validation_dataloader = DataLoader(
-                validation_dataset, batch_size=ps_batch_size
-            )
+        val_dataloader = None
+        if val_dataset is not None:
+            val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
 
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
@@ -145,7 +143,7 @@ class SDCI(BaseModel):
             ps_dataloader,
             ps_optimizer,
             ps_kwargs,
-            validation_dataloader=validation_dataloader,
+            val_dataloader=val_dataloader,
             log_wandb=log_wandb,
             print_graph=verbose,
             B_true=B_true,
@@ -193,7 +191,7 @@ class SDCI(BaseModel):
             dataloader,
             optimizer,
             self._stage2_kwargs,
-            validation_dataloader=validation_dataloader,
+            val_dataloader=val_dataloader,
             log_wandb=log_wandb,
             print_graph=verbose,
             B_true=B_true,
@@ -235,7 +233,7 @@ def _train(
     dataloader,
     optimizer,
     config,
-    validation_dataloader=None,
+    val_dataloader=None,
     log_wandb=False,
     print_graph=True,
     B_true=None,
@@ -271,7 +269,7 @@ def _train(
     gamma_cap = None
     early_stopping_patience_counter = 0
     best_model = None
-    best_validation_loss = np.inf
+    best_val_loss = np.inf
     #######################
     # Begin training loop #
     #######################
@@ -362,10 +360,10 @@ def _train(
         #########################
         # Begin validation step #
         #########################
-        if epoch % n_epochs_check_validation == 0 and validation_dataloader is not None:
-            validation_loss = 0.0
+        if epoch % n_epochs_check_validation == 0 and val_dataloader is not None:
+            val_loss = 0.0
             model.eval()
-            for batch in validation_dataloader:
+            for batch in val_dataloader:
                 X_batch, mask_interventions_oh, _ = batch
                 if device:
                     X_batch = X_batch.to(device)
@@ -375,21 +373,21 @@ def _train(
                     X_batch,
                     mask_interventions_oh=mask_interventions_oh,
                 )
-                validation_loss += loss.item()
+                val_loss += loss.item()
 
             if log_wandb:
                 wandb.log(
                     {
                         "epoch": epoch + start_wandb_epoch,
-                        "validation_loss": validation_loss,
+                        "validation_loss": val_loss,
                     }
                 )
 
             if early_stopping:
-                if validation_loss < best_validation_loss:
+                if val_loss < best_val_loss:
                     best_model = copy.deepcopy(model)
-                    best_validation_loss = validation_loss
-                    early_stopping_patience_counterpatience_counter = 0
+                    best_val_loss = val_loss
+                    early_stopping_patience_counter = 0
                 else:
                     early_stopping_patience_counter += 1
 
