@@ -139,7 +139,7 @@ class SDCI(BaseModel):
             "threshold": self.threshold,
         }
         train_kwargs = train_kwargs or {}
-        self._ps_model = _train(
+        self._ps_model, next_epoch = _train(
             self._ps_model,
             ps_dataloader,
             ps_optimizer,
@@ -149,6 +149,7 @@ class SDCI(BaseModel):
             print_graph=verbose,
             B_true=B_true,
             device=device,
+            return_next_epoch=True,
             **train_kwargs,
         )
 
@@ -196,7 +197,7 @@ class SDCI(BaseModel):
             log_wandb=log_wandb,
             print_graph=verbose,
             B_true=B_true,
-            start_wandb_epoch=self._stage1_kwargs["n_epochs"],
+            start_wandb_epoch=next_epoch,
             device=device,
             **train_kwargs,
         )
@@ -240,6 +241,7 @@ def _train(
     B_true=None,
     start_wandb_epoch=0,
     device=None,
+    return_next_epoch=False,
     n_epochs_check_validation=20,
     early_stopping=True,
     early_stopping_patience=10,
@@ -404,4 +406,6 @@ def _train(
     # End training loop #
     #####################
 
+    if return_next_epoch:
+        return model, epoch + 1
     return model
