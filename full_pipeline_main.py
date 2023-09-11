@@ -1,21 +1,22 @@
 import os
 
 import click
+import networkx as nx
 import numpy as np
 import wandb
 
 import simulation
-from models._dagma import DAGMA
 from utils import set_random_seed_all
 from train_utils import (
     create_intervention_dataset,
     subset_interventions,
 )
+from simulated_data import random_model_gaussian_global_variance
 
-from models import SDCI, DCDI, DCDFG
+from models import SDCI, DCDI, DCDFG, DAGMA
 
 
-def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
+def generate_dataset_deprecated(n, d, seed, frac_interventions, n_edges_per_d=5):
     assert n_edges_per_d < d
     maintain_dataset_size = True
     n_edges = n_edges_per_d * d
@@ -40,6 +41,48 @@ def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5):
         "knockdown_eff": knockdown_eff,
         "frac_interventions": frac_interventions,
         "maintain_dataset_size": maintain_dataset_size,
+    }
+
+    return X_df, B_true, wandb_config_dict
+
+
+def generate_dataset(n, d, seed, frac_interventions, n_edges_per_d=5, dataset="ER"):
+    assert n_edges_per_d < d
+    n_edges = n_edges_per_d * d
+    knockdown_scaling = 0.0
+    n_interventions = int(frac_interventions * d)
+
+    set_random_seed_all(seed)
+    if dataset == "ER":
+        scale = 0.5
+    elif dataset == "chain":
+        scale = lambda depth: 2 * (d - depth) / d
+    else:
+        raise ValueError(f"dataset type {dataset} not recognized")
+
+    true_causal_model = random_model_gaussian_global_variance(
+        d,
+        n_edges,
+        knockdown=knockdown_scaling,
+        dag_type=dataset,
+        scale=scale,
+    )
+    B_true = true_causal_model.adjacency
+    interventions_names = np.random.choice(
+        list(true_causal_model.interventions.keys()), n_interventions, replace=False
+    )
+    X_df = true_causal_model.generate_dataframe_from_all_distributions(
+        n_samples_control=n, n_samples_per_intervention=n, subset_interventions=interventions_names
+    )
+    # normalize the data (except the last column, which is the intervention indicator)
+    X_df.iloc[:, :-1] = (X_df.iloc[:, :-1] - X_df.iloc[:, :-1].mean()) / X_df.iloc[:, :-1].std()
+    wandb_config_dict = {
+        "n": n,
+        "d": d,
+        "n_edges_per_d": n_edges_per_d,
+        "seed": seed,
+        "frac_interventions": frac_interventions,
+        "knockdown_scaling": knockdown_scaling,
     }
 
     return X_df, B_true, wandb_config_dict
@@ -121,9 +164,8 @@ def run_dagma(X_df, B_true, wandb_config_dict, wandb_project):
 
     return model.get_adjacency_matrix()
 
-def save_B_pred(
-    B_pred, n, d, seed, frac_interventions, method_name, dirname="saved_mtxs/"
-):
+
+def save_B_pred(B_pred, n, d, seed, frac_interventions, method_name, dirname="saved_mtxs/"):
     filename = f"B_pred_{n}_{d}_{seed}_{frac_interventions}_{method_name}.npy"
     # check if dir exists
     if not os.path.exists(dirname):
@@ -133,27 +175,17 @@ def save_B_pred(
     np.save(filepath, B_pred)
 
 
-@click.command()
-@click.option("--n", default=50, help="Per interventional subset")
-@click.option("--d", default=20, type=int, help="Number of dimensions")
-@click.option(
-    "--n_edges_per_d", type=int, default=5, help="Number of edges per dimension"
-)
-@click.option("--seed", default=0, help="Random seed")
-@click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
-@click.option(
-    "--model", default="all", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
-)
-@click.option(
-    "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
-)
-@click.option(
-    "--wandb-project", default="full-pipeline-simulation", help="Wandb project name"
-)
-def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project):
+def run_full_pipeline(
+    n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project
+):
+    # X_df_old, B_true_old, wandb_config_dict, param_dict = generate_dataset(
+    #     n, d, 0, frac_interventions, n_edges_per_d=n_edges_per_d
+    # )
     X_df, B_true, wandb_config_dict = generate_dataset(
-        n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d
+        n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d, dataset="ER"
     )
+
+
     if save_mtxs:
         save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
@@ -182,5 +214,24 @@ def run_full_pipeline(n, d, n_edges_per_d, seed, frac_interventions, model, save
             save_B_pred(B_pred, n, d, seed, frac_interventions, "dagma")
 
 
+@click.command()
+@click.option("--n", default=100, help="Per interventional subset")
+@click.option("--d", default=10, type=int, help="Number of dimensions")
+@click.option("--n_edges_per_d", type=int, default=5, help="Number of edges per dimension")
+@click.option("--seed", default=0, help="Random seed")
+@click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
+@click.option(
+    "--model", default="sdci", help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]"
+)
+@click.option("--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory")
+@click.option("--wandb-project", default="simulation", help="Wandb project name")
+def _run_full_pipeline(
+    n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project
+):
+    run_full_pipeline(
+        n, d, n_edges_per_d, seed, frac_interventions, model, save_mtxs, wandb_project
+    )
+
+
 if __name__ == "__main__":
-    run_full_pipeline()
+    _run_full_pipeline()

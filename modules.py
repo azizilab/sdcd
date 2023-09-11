@@ -10,21 +10,42 @@ import torch.nn as nn
 import numpy as np
 
 
+def get_activation(activation: Literal["relu", "sigmoid", "tanh", "linear"]):
+    """
+    Args:
+        activation (str): activation function name
+    Returns:
+        torch.nn.Module: activation function
+    """
+    if activation == "relu":
+        return nn.ReLU()
+    elif activation == "sigmoid":
+        return nn.Sigmoid()
+    elif activation == "tanh":
+        return nn.Tanh()
+    elif activation == "sin":
+        return torch.sin
+    elif activation == "linear":
+        return nn.Identity()
+    else:
+        raise ValueError(f"Unknown activation function: {activation}")
+
+
 class DenseLayers(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dims, activation, batch_norm=False):
+    def __init__(self, in_dim, out_dim, hidden_dims, activation, batch_norm=False, bias=True):
         super().__init__()
-        self.activation = activation
+        self.activation = get_activation(activation) if type(activation) == str else activation
         self.batch_norm = batch_norm
         self.layers = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
 
         dims = [in_dim] + hidden_dims + [out_dim]
         for i in range(len(dims) - 1):
-            self.layers.append(nn.Linear(dims[i], dims[i + 1]))
+            self.layers.append(nn.Linear(dims[i], dims[i + 1], bias=bias))
             if self.batch_norm and i < len(dims) - 2:
                 self.batch_norms.append(nn.BatchNorm1d(dims[i + 1]))
 
-        self.reset_parameters()
+        self.reset_parameters_gp()
 
     def forward(self, x):
         """
@@ -46,11 +67,37 @@ class DenseLayers(nn.Module):
         return [layer.weight.T for layer in self.layers]
 
     @torch.no_grad()
-    def reset_parameters(self):
+    def reset_parameters_gp(self, scale=1.0):
         for layer in self.layers:
-            bound = 2.0 / layer.in_features**0.5 / layer.out_features**0.5
+            if layer.in_features == 0 or layer.out_features == 0:
+                continue
+            bound = scale / layer.in_features ** 0.5
+            nn.init.normal_(layer.weight, 0, bound)
+
+    @torch.no_grad()
+    def reset_parameters_bounded_eigenvalues(self, scale=1.0):
+        for layer in self.layers:
+            if layer.in_features == 0 or layer.out_features == 0:
+                continue
+            bound = 2.0 / layer.in_features**0.5 / layer.out_features**0.5 * scale
             nn.init.uniform_(layer.weight, -bound, bound)
-            nn.init.uniform_(layer.bias, -bound, bound)
+            if layer.bias is not None:
+                nn.init.uniform_(layer.bias, -bound, bound)
+
+    @torch.no_grad()
+    def reset_parameters_away_from_zero(self, min_abs_value=0.5, max_abs_value=2.0):
+        for layer in self.layers:
+            if layer.in_features == 0 or layer.out_features == 0:
+                continue
+            random_signs_layer = torch.randint(0, 2, layer.weight.shape) * 2 - 1
+            layer.weight.data = random_signs_layer * (
+                    torch.rand(layer.weight.shape) * (max_abs_value - min_abs_value) + min_abs_value
+            )
+            if layer.bias is not None:
+                random_signs_bias = torch.randint(0, 2, layer.bias.shape) * 2 - 1
+                layer.bias.data = random_signs_bias * (
+                        torch.rand(layer.bias.shape) * (max_abs_value - min_abs_value) + min_abs_value
+                )
 
 
 class LinearParallel(nn.Module):
@@ -104,7 +151,7 @@ class DispatcherLayer(nn.Module):
             self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
 
         self.bias = nn.Parameter(torch.zeros(out_dim, hidden_dim))
-        self.reset_parameters()
+        self.reset_parameters_bounded_eigenvalues()
 
     @property
     def weight(self):
@@ -124,7 +171,11 @@ class DispatcherLayer(nn.Module):
 
     @torch.no_grad()
     def reset_parameters(self):
-        bound = 1.0 / self.in_dim / self.hidden_dim ** (1.0 / self.adjacency_p)
+        self.reset_parameters_bounded_eigenvalues()
+
+    @torch.no_grad()
+    def reset_parameters_bounded_eigenvalues(self, scale=1.0):
+        bound = scale / self.in_dim / self.hidden_dim ** (1.0 / self.adjacency_p)
         nn.init.uniform_(self.weight, -bound, bound)
         nn.init.uniform_(self.bias, -bound, bound)
 
