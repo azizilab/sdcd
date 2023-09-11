@@ -3,7 +3,7 @@ import seaborn as sns
 import torch.utils.data
 from torch import nn
 
-import simulation
+import simulated_data.deprecated_simulation as deprecated_simulation
 from modules import AutoEncoderLayers
 from utils import set_random_seed_all, print_graph_from_weights
 
@@ -11,11 +11,13 @@ set_random_seed_all(0)
 
 n, d = 1000, 20
 n_edges = 4 * d
-B_true = simulation.simulate_dag(d, n_edges, "ER")
-X, param_dict = simulation.simulate_nonlinear_sem(B_true, n, "mlp")
+B_true = deprecated_simulation.simulate_dag(d, n_edges, "ER")
+X, param_dict = deprecated_simulation.simulate_nonlinear_sem(B_true, n, "mlp")
 X = torch.FloatTensor(X)
 
-model = AutoEncoderLayers(d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0)
+model = AutoEncoderLayers(
+    d, [10, 1], nn.Sigmoid(), shared_layers=False, adjacency_p=2.0
+)
 learning_rate = 1e-3
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 

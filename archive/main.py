@@ -23,7 +23,7 @@ X = torch.FloatTensor(X)
 
 model = AutoEncoder(d, 32, [], [], nn.ReLU(), adjacency_p=1)
 print(model)
-learning_rate = 2e-4#1e-3
+learning_rate = 2e-4  # 1e-3
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 data_loader = torch.utils.data.DataLoader(X, batch_size=n, shuffle=True, drop_last=True)

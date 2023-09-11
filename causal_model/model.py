@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Optional
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 
 from utils import set_random_seed_all
@@ -20,14 +21,24 @@ class CausalModel:
     """
 
     def __init__(
-        self, graph: nx.DiGraph, causal_mechanisms: dict = None, interventions: dict = None
+        self,
+        graph: nx.DiGraph,
+        causal_mechanisms: dict = None,
+        interventions: dict = None,
     ):
         self.graph = graph
-        self.causal_mechanisms = causal_mechanisms if causal_mechanisms is not None else dict()
-        self.interventions = interventions if interventions is not None else defaultdict(dict)
+        self.causal_mechanisms = (
+            causal_mechanisms if causal_mechanisms is not None else dict()
+        )
+        self.interventions = (
+            interventions if interventions is not None else defaultdict(dict)
+        )
 
-        self.variables = list(self.graph.nodes)
-        self.adjacency = nx.to_numpy_array(self.graph)
+        self.node_sort_idxs = np.argsort(self.graph.nodes)
+        self.variables = np.array(self.graph.nodes)[self.node_sort_idxs].tolist()
+        self.adjacency = nx.to_numpy_array(self.graph)[self.node_sort_idxs, :][
+            :, self.node_sort_idxs
+        ]  # Sort adjacency by node order
         self._check_acyclic()
         self._check_causal_mechanisms_graph_consistency()
 
@@ -37,16 +48,21 @@ class CausalModel:
 
     @property
     def nodes(self) -> list:
-        return list(self.graph.nodes)
+        return self.variables
 
     def get_parents(self, node):
         """Return the parents of a variable."""
         return sorted(self.graph.predecessors(node))
 
     def sample_from_model(self, n_samples, intervention_name=None):
-        if intervention_name is not None and intervention_name not in self.interventions:
+        if (
+            intervention_name is not None
+            and intervention_name not in self.interventions
+        ):
             raise ValueError(f"Intervention does not exist, {intervention_name}")
-        interventions = {} if intervention_name is None else self.interventions[intervention_name]
+        interventions = (
+            {} if intervention_name is None else self.interventions[intervention_name]
+        )
 
         samples_per_node = dict()
         for node in nx.topological_sort(self.graph):
@@ -108,7 +124,7 @@ class CausalModel:
             data.append(samples)
 
         data = pd.concat(data, ignore_index=True)
-        # sort columns according to the node order of the graph, to be consistent with the adjacency matrix
+        # sort columns to be consistent with the adjacency matrix
         data = data[self.nodes + ["perturbation_label"]]
         if subset_interventions is not None:
             subset_interventions = set(subset_interventions) | {"obs"}

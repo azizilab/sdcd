@@ -3,7 +3,7 @@ import wandb
 
 from full_pipeline_main import generate_dataset
 from models import SDCI
-from train_utils import create_intervention_dataset
+from utils import create_intervention_dataset
 
 
 seed = 0
@@ -15,7 +15,7 @@ X_df, B_true, wandb_config_dict = generate_dataset(
     n, d, seed, frac_interventions, n_edges_per_d=n_edges_per_d
 )
 print("Dataset generated")
-dataset = create_intervention_dataset(X_df, regime_format=False)
+dataset = create_intervention_dataset(X_df, regime_format=True)
 model = SDCI()
 model.train(
     dataset,
@@ -38,6 +38,3 @@ metrics_dict["train_time"] = model._train_runtime_in_sec
 
 wandb.log(metrics_dict)
 wandb.finish()
-
-
-

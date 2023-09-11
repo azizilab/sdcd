@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Optional, Literal
 
 import numpy as np
 import torch
@@ -9,10 +9,12 @@ import wandb
 import networkx as nx
 
 from modules import AutoEncoderLayers
-from train_utils import (
+from utils import (
+    print_graph_from_weights,
+    move_modules_to_device,
+    TorchStandardScaler,
     compute_metrics,
 )
-from utils import print_graph_from_weights, move_modules_to_device
 
 from .base._base_model import BaseModel
 
@@ -33,6 +35,7 @@ _DEFAULT_STAGE2_KWARGS = {
     "n_epochs": 1_000,
     "alpha": 5e-3,
     "max_gamma": 300,
+    "gamma_schedule": "linear",
     "beta": 5e-3,
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.5,
@@ -43,8 +46,14 @@ _DEFAULT_STAGE2_KWARGS = {
 
 
 class SDCI(BaseModel):
-    def __init__(self):
+    def __init__(
+        self,
+        model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
+        standard_scale: bool = False,
+    ):
         super().__init__()
+        self.model_variance_flavor = model_variance_flavor
+        self.standard_scale = standard_scale
         self._stage1_kwargs = None
         self._stage2_kwargs = None
 
@@ -53,12 +62,14 @@ class SDCI(BaseModel):
         dataset: Dataset,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
+        wandb_name: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
+        l2_on_dispatcher: bool = True,
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
@@ -68,45 +79,55 @@ class SDCI(BaseModel):
         ps_batch_size = self._stage1_kwargs["batch_size"]
         batch_size = self._stage2_kwargs["batch_size"]
 
+        if self.standard_scale:
+            scaler = TorchStandardScaler()
+            scaled_X = scaler.fit_transform(dataset[:][0])
+            dataset = torch.utils.data.TensorDataset(scaled_X, *dataset[:][1:])
+
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
-        assert len(sample_batch) == 2, "Dataset should contain (X, intervention_labels)"
+        assert len(sample_batch) == 3, "Dataset should contain (X, masks, regimes)"
         self.d = sample_batch[0].shape[1]
 
         if log_wandb:
+            if wandb.run is not None:
+                wandb.finish()  # Close previous run
+
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
-                    project=wandb_project,
-                    name="SDCI",
-                    config={
-                        "batch_size": batch_size,
-                        "stage1_kwargs": self._stage1_kwargs,
-                        "stage2_kwargs": self._stage2_kwargs,
-                        **wandb_config_dict,
-                        },
-                    )
+                project=wandb_project,
+                name=wandb_name,
+                config={
+                    "batch_size": batch_size,
+                    "stage1_kwargs": self._stage1_kwargs,
+                    "stage2_kwargs": self._stage2_kwargs,
+                    **wandb_config_dict,
+                },
+            )
 
         start = time.time()
         # Stage 1: Pre-selection
         self._ps_model = AutoEncoderLayers(
-                self.d,
-                [10, 1],
-                nn.Sigmoid(),
-                shared_layers=False,
-                adjacency_p=2.0,
-                dag_penalty_flavor="none",
-                )
+            self.d,
+            [10],
+            nn.Sigmoid(),
+            model_variance_flavor=self.model_variance_flavor,
+            shared_layers=False,
+            adjacency_p=2.0,
+            dag_penalty_flavor="none",
+            l2_on_dispatcher=l2_on_dispatcher,
+        )
         if device:
             move_modules_to_device(self._ps_model, device)
 
         ps_optimizer = torch.optim.Adam(
-                self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
-                )
+            self._ps_model.parameters(), lr=self._stage1_kwargs["learning_rate"]
+        )
 
         ps_kwargs = {
-                **self._stage1_kwargs,
-                "threshold": self.threshold,
-                }
+            **self._stage1_kwargs,
+            "threshold": self.threshold,
+        }
         self._ps_model = _train(
             self._ps_model,
             ps_dataloader,
@@ -120,27 +141,30 @@ class SDCI(BaseModel):
 
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
-        mask = (
-            self._ps_model.get_adjacency_matrix().cpu().detach().numpy() > mask_threshold
+        self._mask = (
+            self._ps_model.get_adjacency_matrix().cpu().detach().numpy()
+            > mask_threshold
         ).astype(int)
         if B_true is not None:
             print(
-                f"Recall of mask: {(B_true.astype(bool) & mask.astype(bool)).sum() / B_true.sum()}"
+                f"Recall of mask: {(B_true.astype(bool) & self._mask.astype(bool)).sum() / B_true.sum()}"
             )
         print(
-            f"Fraction of possible edges in mask: {mask.sum() / (mask.shape[0] * mask.shape[1])}"
+            f"Fraction of possible edges in mask: {self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])}"
         )
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
         self._model = AutoEncoderLayers(
-                self.d,
-                [10, 1],
+            self.d,
+            [10],
             nn.Sigmoid(),
+            model_variance_flavor=self.model_variance_flavor,
             shared_layers=False,
             adjacency_p=2.0,
             dag_penalty_flavor=dag_penalty_flavor,
-            mask=mask,
+            mask=self._mask,
+            l2_on_dispatcher=l2_on_dispatcher,
         )
         if device:
             move_modules_to_device(self._model, device)
@@ -163,6 +187,25 @@ class SDCI(BaseModel):
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
+
+    def compute_min_dag_threshold(self) -> float:
+        def is_acyclic(adj_matrix):
+            return nx.is_directed_acyclic_graph(nx.DiGraph(adj_matrix))
+
+        def bisect(func, a, b, tol=1e-5):
+            mid = (a + b) / 2.0
+            while (b - a) / 2.0 > tol:
+                if func(mid) == True:
+                    b = mid
+                else:
+                    a = mid
+                mid = (a + b) / 2.0
+            return mid
+
+        adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
+        func = lambda threshold: is_acyclic(adj_matrix > threshold)
+        self.threshold = bisect(func, 0, 1)
+        return self.threshold 
 
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
@@ -187,7 +230,13 @@ def _train(
     n_epochs = config["n_epochs"]
     alpha = config["alpha"]
     max_gamma = config["max_gamma"]
-    gammas = np.linspace(0, max_gamma, n_epochs)
+    gamma_schedule = config.get("gamma_schedule", "linear")
+    if gamma_schedule == "linear":
+        gammas = np.linspace(0, max_gamma, n_epochs)
+    elif gamma_schedule == "exponential":
+        gammas = np.exp(np.linspace(0, np.log(max_gamma), n_epochs))
+    else:
+        raise ValueError(f"Unknown gamma schedule {gamma_schedule}.")
     beta = config["beta"]
     threshold = config["threshold"]
     freeze_gamma_at_dag = config.get("freeze_gamma_at_dag", False)
@@ -209,10 +258,10 @@ def _train(
         epoch_loss = 0
         epoch_loss_details = []
         for batch in dataloader:
-            X_batch, interventions_batch = batch
+            X_batch, mask_interventions_oh, _ = batch
             if device:
                 X_batch = X_batch.to(device)
-                interventions_batch = interventions_batch.to(device)
+                mask_interventions_oh = mask_interventions_oh.to(device)
 
             optimizer.zero_grad()
             loss, loss_details = model.loss(
@@ -221,7 +270,7 @@ def _train(
                 beta,
                 gamma,
                 n_observations,
-                interventions=interventions_batch,
+                mask_interventions_oh=mask_interventions_oh,
                 return_detailed_losses=True,
             )
             loss.backward()

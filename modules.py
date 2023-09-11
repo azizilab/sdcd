@@ -6,6 +6,7 @@ from typing import Literal
 import scipy.sparse
 import torch
 import torch.nn as nn
+import torch.distributions as dist
 
 import numpy as np
 
@@ -32,9 +33,13 @@ def get_activation(activation: Literal["relu", "sigmoid", "tanh", "linear"]):
 
 
 class DenseLayers(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dims, activation, batch_norm=False, bias=True):
+    def __init__(
+        self, in_dim, out_dim, hidden_dims, activation, batch_norm=False, bias=True
+    ):
         super().__init__()
-        self.activation = get_activation(activation) if type(activation) == str else activation
+        self.activation = (
+            get_activation(activation) if type(activation) == str else activation
+        )
         self.batch_norm = batch_norm
         self.layers = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
@@ -71,7 +76,7 @@ class DenseLayers(nn.Module):
         for layer in self.layers:
             if layer.in_features == 0 or layer.out_features == 0:
                 continue
-            bound = scale / layer.in_features ** 0.5
+            bound = scale / layer.in_features**0.5
             nn.init.normal_(layer.weight, 0, bound)
 
     @torch.no_grad()
@@ -91,12 +96,14 @@ class DenseLayers(nn.Module):
                 continue
             random_signs_layer = torch.randint(0, 2, layer.weight.shape) * 2 - 1
             layer.weight.data = random_signs_layer * (
-                    torch.rand(layer.weight.shape) * (max_abs_value - min_abs_value) + min_abs_value
+                torch.rand(layer.weight.shape) * (max_abs_value - min_abs_value)
+                + min_abs_value
             )
             if layer.bias is not None:
                 random_signs_bias = torch.randint(0, 2, layer.bias.shape) * 2 - 1
                 layer.bias.data = random_signs_bias * (
-                        torch.rand(layer.bias.shape) * (max_abs_value - min_abs_value) + min_abs_value
+                    torch.rand(layer.bias.shape) * (max_abs_value - min_abs_value)
+                    + min_abs_value
                 )
 
 
@@ -132,7 +139,9 @@ class LinearParallel(nn.Module):
 
 
 class DispatcherLayer(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim, adjacency_p=2.0, mask=None, warmstart=False):
+    def __init__(
+        self, in_dim, out_dim, hidden_dim, adjacency_p=2.0, mask=None, warmstart=False
+    ):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -145,7 +154,9 @@ class DispatcherLayer(nn.Module):
             self.register_buffer("mask", torch.ones((in_dim, out_dim)))
 
         if mask is not None and warmstart:
-            warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat((1, 1, hidden_dim))
+            warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat(
+                (1, 1, hidden_dim)
+            )
             self._weight = nn.Parameter(warmstart_tensor)
         else:
             self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
@@ -199,24 +210,36 @@ class AutoEncoderLayers(nn.Module):
         in_dim,
         hidden_dims,
         activation=nn.ReLU(),
+        model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
         shared_layers: bool = True,
         adjacency_p: float = 2.0,
         mask=None,
         warmstart=False,
         dag_penalty_flavor: Literal["scc", "power_iteration", "logdet", "none"] = "scc",
+        l2_on_dispatcher: bool = True,
     ):
         super().__init__()
         self.in_dim = in_dim
         self.hidden_dims = hidden_dims
         self.activation = activation
+        self.model_variance_flavor = model_variance_flavor
         self.shared_layers = shared_layers
         self.adjacency_p = adjacency_p
+        self.l2_on_dispatcher = l2_on_dispatcher
+
+        if (
+            self.model_variance_flavor == "nn"
+            or self.model_variance_flavor == "parameter"
+        ):
+            self.var_activation = nn.Softplus()
 
         self.dag_penalty_flavor = dag_penalty_flavor
         if dag_penalty_flavor == "none":
             # Need to mask out identity to prevent learning self-loops
             if mask is not None:
-                mask = (mask.astype(bool) & (1 - np.eye(self.in_dim)).astype(bool)).astype(int)
+                mask = (
+                    mask.astype(bool) & (1 - np.eye(self.in_dim)).astype(bool)
+                ).astype(int)
             else:
                 mask = 1 - np.eye(self.in_dim)
 
@@ -233,9 +256,13 @@ class AutoEncoderLayers(nn.Module):
         )
 
         if dag_penalty_flavor == "scc":
-            self.power_grad = SCCPowerIteration(self.get_adjacency_matrix(), self.in_dim, 1000)
+            self.power_grad = SCCPowerIteration(
+                self.get_adjacency_matrix(), self.in_dim, 1000
+            )
         elif dag_penalty_flavor == "power_iteration":
-            self.power_grad = PowerIterationGradient(self.get_adjacency_matrix(), self.in_dim)
+            self.power_grad = PowerIterationGradient(
+                self.get_adjacency_matrix(), self.in_dim
+            )
 
         self.identity = torch.eye(self.in_dim)
 
@@ -245,10 +272,19 @@ class AutoEncoderLayers(nn.Module):
             dims = self.hidden_dims
             for i in range(len(dims) - 1):
                 self.layers.append(nn.Linear(dims[i], dims[i + 1]))
+            self.output_layer = nn.Linear(dims[-1], 1)
+            if self.model_variance_flavor == "nn":
+                self.var_layer = nn.Linear(dims[-1], 1)
         else:
             dims = self.hidden_dims
             for i in range(len(dims) - 1):
                 self.layers.append(LinearParallel(dims[i], dims[i + 1], self.in_dim))
+            self.output_layer = LinearParallel(dims[-1], 1, self.in_dim)
+            if self.model_variance_flavor == "nn":
+                self.var_layer = LinearParallel(dims[-1], 1, self.in_dim)
+
+        if self.model_variance_flavor == "parameter":
+            self.gene_vars = nn.Parameter(torch.zeros(self.in_dim))
 
         self.reset_parameters()
 
@@ -261,14 +297,25 @@ class AutoEncoderLayers(nn.Module):
         Args:
             x (torch.Tensor): input tensor of shape (batch_size, in_dim)
         Returns:
-            torch.Tensor: output tensor of shape (batch_size, out_dim, hidden_dim[-1])
+            torch.Tensor: output tensor of shape (batch_size, out_dim)
         """
-        for i, layer in enumerate(self.layers):
-            x = layer(x)
-            if i < len(self.layers) - 1:
-                x = self.activation(x)
+        for layer in self.layers:
+            x = self.activation(layer(x))
 
-        return x
+        x_m = self.output_layer(x).squeeze(2)
+
+        if self.model_variance_flavor == "nn":
+            x_v = self.var_activation(self.var_layer(x)).squeeze(2)
+        elif self.model_variance_flavor == "parameter":
+            x_v = torch.broadcast_to(
+                self.var_activation(self.gene_vars).unsqueeze(0), x_m.shape
+            )
+        elif self.model_variance_flavor == "unit":
+            x_v = torch.ones_like(x_m)
+        else:
+            raise NotImplementedError
+
+        return x_m, x_v
 
     def get_adjacency_matrix(self):
         return self.layers[0].get_adjacency_matrix()
@@ -278,18 +325,15 @@ class AutoEncoderLayers(nn.Module):
         for layer in self.layers:
             layer.reset_parameters()
 
-    def reconstruction_loss(self, x, interventions=None):
-        x_mean = self(x).squeeze(2)
-        if interventions is not None:
-            interventions[torch.where(interventions == -1)] = x.shape[1]
-            interventions_oh = nn.functional.one_hot(
-                interventions.squeeze(), num_classes=x.shape[1] + 1
-            )
-            interventions_oh = interventions_oh[:, :-1]  # cutoff obs
-            mask_interventions_oh = 1 - interventions_oh
-            nll = (mask_interventions_oh * (x_mean - x) ** 2).sum()
-        else:
-            nll = ((x_mean - x) ** 2).sum()
+    def reconstruction_loss(self, x, mask_interventions_oh=None):
+        x_mean, x_var = self(x)
+
+        if mask_interventions_oh is None:
+            mask_interventions_oh = torch.ones_like(x_mean)
+
+        nll = -(
+            mask_interventions_oh * dist.Normal(x_mean, x_var ** (0.5)).log_prob(x)
+        ).sum()
         # we normalize by the number of samples (but ideally we shouldn't, as it mess up
         # with the L1 and L2 regularization scales)
         nll /= x.shape[0]
@@ -300,7 +344,14 @@ class AutoEncoderLayers(nn.Module):
         return torch.sum(torch.abs(self.layers[0].weight))
 
     def l2_reg_all_weights(self):
-        return sum([torch.sum(p**2) for p in self.parameters()])
+        return sum(
+            [
+                torch.sum(p**2)
+                for p_name, p in self.named_parameters()
+                if p.requires_grad
+                and (p_name != "layers.0._weight" or self.l2_on_dispatcher)
+            ]
+        )
 
     def dag_reg(self):
         A = self.get_adjacency_matrix() ** 2
@@ -322,10 +373,10 @@ class AutoEncoderLayers(nn.Module):
         beta=1.0,
         gamma=1.0,
         n_observations=None,
-        interventions=None,
+        mask_interventions_oh=None,
         return_detailed_losses=False,
     ):
-        nll = self.reconstruction_loss(x, interventions=interventions)
+        nll = self.reconstruction_loss(x, mask_interventions_oh=mask_interventions_oh)
         l1_reg = alpha * self.l1_reg_dispatcher()  # * n_obs_norm
         l2_reg = beta * self.l2_reg_all_weights()  # * n_obs_norm
         # mu = 1 / gamma
@@ -360,7 +411,9 @@ class SCCPowerIteration(nn.Module):
         self.d = d
         self.update_scc_freq = update_scc_freq
 
-        self._dummy_param = nn.Parameter(torch.empty(1), requires_grad=False) # Used to track device
+        self._dummy_param = nn.Parameter(
+            torch.zeros(1), requires_grad=False
+        )  # Used to track device
 
         self.scc_list = None
         self.update_scc(init_adj_mtx)
@@ -395,7 +448,7 @@ class SCCPowerIteration(nn.Module):
         # print(len(self.scc_list))
 
     def power_iteration(self, adj_mtx, n_iter=5):
-        matrix = adj_mtx ** 2
+        matrix = adj_mtx**2
         for scc in self.scc_list:
             if len(scc) == self.d:
                 sub_matrix = matrix
@@ -451,9 +504,11 @@ class PowerIterationGradient(nn.Module):
         super().__init__()
         self.d = d
 
-        self._dummy_param = nn.Parameter(torch.empty(1), requires_grad=False) # Used to track device
+        self._dummy_param = nn.Parameter(
+            torch.zeros(1), requires_grad=False
+        )  # Used to track device
 
-        self.register_buffer("u", None) 
+        self.register_buffer("u", None)
         self.register_buffer("v", None)
 
         self.init_eigenvect(init_adj_mtx)
@@ -481,7 +536,7 @@ class PowerIterationGradient(nn.Module):
 
     def compute_gradient(self, adj_mtx):
         """Gradient eigenvalue"""
-        A = adj_mtx ** 2
+        A = adj_mtx**2
         # self.iterate(4, A)
         self.init_eigenvect(adj_mtx)
         grad = self.u[:, None] @ self.v[None] / (self.u.dot(self.v) + 1e-6)
