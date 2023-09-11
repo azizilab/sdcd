@@ -60,6 +60,7 @@ def create_intervention_dataset(
     unstacked_perturbation_columns = (
         X_df[perturbation_colname]
         .str.split(",", expand=True)
+        .reset_index()
         .stack()
         .map(column_mapping)
         .fillna(-1)
