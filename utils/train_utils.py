@@ -54,13 +54,15 @@ def create_intervention_dataset(
         X_df.drop(perturbation_colname, axis=1).to_numpy().astype(float)
     )
     # ensure interventions are ints mapping to index of column
-    column_mapping = {c: i for i, c in enumerate(X_df.columns[:-1])}
+    column_mapping = {str(c): i for i, c in enumerate(X_df.columns[:-1])}
+    print(column_mapping)
 
     # Split the perturbation_colname by comma and map each value to its column index
     unstacked_perturbation_columns = (
         X_df[perturbation_colname]
+        .map(str)
         .str.split(",", expand=True)
-        .reset_index()
+        .reset_index(drop=True)
         .stack()
         .map(column_mapping)
         .fillna(-1)
@@ -91,7 +93,7 @@ def create_intervention_dataset(
             X_df.shape[1] - 1 - mask_interventions_oh.sum(axis=1)
         )
 
-        return TensorDataset(X, mask_interventions_oh, n_regimes)
+        return torch.utils.data.TensorDataset(X, mask_interventions_oh, n_regimes)
 
     max_perturbations = (
         unstacked_perturbation_columns.applymap(lambda x: x != -1).sum(axis=1).max()
