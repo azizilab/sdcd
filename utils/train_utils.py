@@ -55,7 +55,6 @@ def create_intervention_dataset(
     )
     # ensure interventions are ints mapping to index of column
     column_mapping = {str(c): i for i, c in enumerate(X_df.columns[:-1])}
-    print(column_mapping)
 
     # Split the perturbation_colname by comma and map each value to its column index
     unstacked_perturbation_columns = (
