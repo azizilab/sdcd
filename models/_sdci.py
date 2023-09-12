@@ -1,3 +1,4 @@
+import copy
 import time
 from typing import Optional, Literal
 
@@ -60,6 +61,7 @@ class SDCI(BaseModel):
     def train(
         self,
         dataset: Dataset,
+        val_dataset: Optional[Dataset] = None,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_name: str = "SDCI",
@@ -67,6 +69,7 @@ class SDCI(BaseModel):
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
+        train_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
         l2_on_dispatcher: bool = True,
@@ -83,6 +86,13 @@ class SDCI(BaseModel):
             scaler = TorchStandardScaler()
             scaled_X = scaler.fit_transform(dataset[:][0])
             dataset = torch.utils.data.TensorDataset(scaled_X, *dataset[:][1:])
+            val_dataset = torch.utils.data.TensorDataset(
+                scaler.transform(val_dataset[:][0]), *val_dataset[:][1:]
+            )
+
+        val_dataloader = None
+        if val_dataset is not None:
+            val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
 
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
@@ -128,15 +138,19 @@ class SDCI(BaseModel):
             **self._stage1_kwargs,
             "threshold": self.threshold,
         }
-        self._ps_model = _train(
+        train_kwargs = train_kwargs or {}
+        self._ps_model, next_epoch = _train(
             self._ps_model,
             ps_dataloader,
             ps_optimizer,
             ps_kwargs,
+            val_dataloader=val_dataloader,
             log_wandb=log_wandb,
             print_graph=verbose,
             B_true=B_true,
             device=device,
+            return_next_epoch=True,
+            **train_kwargs,
         )
 
         # Create mask for main algo
@@ -179,11 +193,13 @@ class SDCI(BaseModel):
             dataloader,
             optimizer,
             self._stage2_kwargs,
+            val_dataloader=val_dataloader,
             log_wandb=log_wandb,
             print_graph=verbose,
             B_true=B_true,
-            start_wandb_epoch=self._stage1_kwargs["n_epochs"],
+            start_wandb_epoch=next_epoch,
             device=device,
+            **train_kwargs,
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
@@ -205,7 +221,7 @@ class SDCI(BaseModel):
         adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
         func = lambda threshold: is_acyclic(adj_matrix > threshold)
         self.threshold = bisect(func, 0, 1)
-        return self.threshold 
+        return self.threshold
 
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
@@ -219,11 +235,16 @@ def _train(
     dataloader,
     optimizer,
     config,
+    val_dataloader=None,
     log_wandb=False,
     print_graph=True,
     B_true=None,
     start_wandb_epoch=0,
     device=None,
+    return_next_epoch=False,
+    n_epochs_check_validation=20,
+    early_stopping=True,
+    early_stopping_patience=10,
 ):
     """Train the model. Assumes dataloader outputs batches alongside interventions."""
     # unpack config
@@ -249,14 +270,24 @@ def _train(
     d = dataloader.dataset[0][0].shape[0]
 
     gamma_cap = None
+    early_stopping_patience_counter = 0
+    best_model = None
+    best_val_loss = np.inf
+    #######################
+    # Begin training loop #
+    #######################
     for epoch in range(n_epochs):
         if gamma_cap is None:
             gamma = gammas[epoch]
         else:
             gamma = gamma_cap
 
+        #######################
+        # Begin training step #
+        #######################
         epoch_loss = 0
         epoch_loss_details = []
+        model.train()
         for batch in dataloader:
             X_batch, mask_interventions_oh, _ = batch
             if device:
@@ -325,5 +356,56 @@ def _train(
 
             if print_graph and B_true is not None:
                 print_graph_from_weights(d, B_pred, B_true)
+        #####################
+        # End training step #
+        #####################
 
+        #########################
+        # Begin validation step #
+        #########################
+        if epoch % n_epochs_check_validation == 0 and val_dataloader is not None:
+            val_loss = 0.0
+            model.eval()
+            for batch in val_dataloader:
+                X_batch, mask_interventions_oh, _ = batch
+                if device:
+                    X_batch = X_batch.to(device)
+                    mask_interventions_oh = mask_interventions_oh.to(device)
+
+                loss = model.reconstruction_loss(
+                    X_batch,
+                    mask_interventions_oh=mask_interventions_oh,
+                )
+                val_loss += loss.item()
+
+            if log_wandb:
+                wandb.log(
+                    {
+                        "epoch": epoch + start_wandb_epoch,
+                        "validation_loss": val_loss,
+                    }
+                )
+
+            if early_stopping and (not freeze_gamma_at_dag or gamma_cap is not None):
+                if val_loss < best_val_loss:
+                    best_model = copy.deepcopy(model)
+                    best_val_loss = val_loss
+                    early_stopping_patience_counter = 0
+                else:
+                    early_stopping_patience_counter += 1
+
+                if early_stopping_patience_counter >= early_stopping_patience:
+                    print("Early stopping triggered.")
+                    model = best_model
+                    break
+        #######################
+        # End validation step #
+        #######################
+
+    #####################
+    # End training loop #
+    #####################
+
+    if return_next_epoch:
+        return model, epoch + 1
     return model
