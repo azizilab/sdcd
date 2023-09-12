@@ -386,7 +386,7 @@ def _train(
                     }
                 )
 
-            if early_stopping:
+            if early_stopping and (not freeze_gamma_at_dag or gamma_cap is not None):
                 if val_loss < best_val_loss:
                     best_model = copy.deepcopy(model)
                     best_val_loss = val_loss
@@ -394,10 +394,10 @@ def _train(
                 else:
                     early_stopping_patience_counter += 1
 
-            if early_stopping_patience_counter >= early_stopping_patience:
-                print("Early stopping triggered.")
-                model = best_model
-                break
+                if early_stopping_patience_counter >= early_stopping_patience:
+                    print("Early stopping triggered.")
+                    model = best_model
+                    break
         #######################
         # End validation step #
         #######################
