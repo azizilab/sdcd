@@ -5,18 +5,14 @@ import numpy as np
 from torch.utils.data import Dataset
 import wandb
 
-from third_party.notears import notears_linear
+from third_party.sortnregress import sortnregress
 
 from .base._base_model import BaseModel
 
-_DEFAULT_MODEL_KWARGS = dict(
-    lambda1=0.1,
-    loss_type="l2",
-    w_threshold=0.3,
-)
+_DEFAULT_MODEL_KWARGS = dict(w_threshold=0.3)
 
 
-class NOTEARS(BaseModel):
+class Sortnregress(BaseModel):
     def __init__(self):
         super().__init__()
         self._adj_matrix = None
@@ -26,7 +22,7 @@ class NOTEARS(BaseModel):
         self,
         dataset: Dataset,
         log_wandb: bool = False,
-        wandb_project: str = "NOTEARS",
+        wandb_project: str = "sortnregress",
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
@@ -37,7 +33,7 @@ class NOTEARS(BaseModel):
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
-                name="NOTEARS",
+                name="sortnregress",
                 config=wandb_config_dict,
             )
         data = dataset.tensors[0].numpy()
@@ -46,11 +42,8 @@ class NOTEARS(BaseModel):
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
         self._model = -1
         w_threshold = self._model_kwargs["w_threshold"]
-        self._adj_matrix = notears_linear(
+        self._adj_matrix = sortnregress(
             data,
-            lambda1=self._model_kwargs["lambda1"],
-            loss_type=self._model_kwargs["loss_type"],
-            w_threshold=np.inf,
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")

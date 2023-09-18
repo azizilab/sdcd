@@ -33,6 +33,9 @@ class DAGMA(BaseModel):
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
+        assert len(dataset.tensors) == 3, "Dataset must be in regime format"
+        assert not dataset.tensors[2].any(), "Dataset must be fully observational"
+
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(

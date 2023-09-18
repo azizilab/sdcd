@@ -8,9 +8,10 @@ from utils import create_intervention_dataset
 def generate_test_dataset(
     n,
     d,
+    use_interventions=True,
 ) -> Dataset:
     n_edges = d // 2
-    n_interventions = d
+    n_interventions = d if use_interventions else 0
 
     true_causal_model = random_model_gaussian_global_variance(
         d,

@@ -7,53 +7,66 @@ from models import (
     DAGMA,
     NOBEARS,
     NOTEARS,
+    Sortnregress,
 )
 
 from .utils import generate_test_dataset
 
 
 @pytest.fixture
-def dataset():
+def interventional_dataset():
     return generate_test_dataset(n=10, d=5)
 
 
-def test_sdci(dataset):
+@pytest.fixture
+def observational_dataset():
+    return generate_test_dataset(n=10, d=5, use_interventions=False)
+
+
+def test_sdci(interventional_dataset):
     m = SDCI()
-    m.train(dataset)
+    m.train(interventional_dataset)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
-def test_dcdi(dataset):
+def test_dcdi(interventional_dataset):
     m = DCDI()
-    m.train(dataset, max_epochs=10)
+    m.train(interventional_dataset, max_epochs=10)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
-def test_dcdfg(dataset):
+def test_dcdfg(interventional_dataset):
     m = DCDFG()
-    m.train(dataset, num_modules=5, max_epochs=2)
+    m.train(interventional_dataset, num_modules=5, max_epochs=2)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
-def test_dagma(dataset):
+def test_dagma(observational_dataset):
     m = DAGMA()
-    m.train(dataset)
+    m.train(observational_dataset)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
-def test_notears(dataset):
+def test_notears(observational_dataset):
     m = NOTEARS()
-    m.train(dataset)
+    m.train(observational_dataset)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
-def test_nobears(dataset):
+def test_nobears(observational_dataset):
     m = NOBEARS()
-    m.train(dataset)
+    m.train(observational_dataset)
+    assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
+    assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
+
+
+def test_sortnregress(observational_dataset):
+    m = Sortnregress()
+    m.train(observational_dataset)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
