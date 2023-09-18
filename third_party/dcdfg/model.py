@@ -41,6 +41,8 @@ class MLPModuleGaussianModel(pl.LightningModule):
         constraint_mode="exp",
     ):
         super().__init__()
+        assert num_modules <= num_vars
+
         self.module = MLPModularGaussianModule(
             num_vars,
             num_layers,

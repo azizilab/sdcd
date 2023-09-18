@@ -22,6 +22,7 @@ _DEFAULT_MODEL_KWARGS = dict(
     lr_init=1e-3,
     reg_coeff=0.1,
     constraint_mode="exp",
+    max_epochs=60000,
 )
 
 
@@ -61,9 +62,11 @@ class DCDI(BaseModel):
 
         start = time.time()
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
+        init_kwargs = self._model_kwargs.copy()
+        max_epochs = init_kwargs.pop("max_epochs")
         self._model = MLPGaussianModel(
             d,
-            **self._model_kwargs,
+            **init_kwargs,
         )
 
         early_stop_1_callback = ConditionalEarlyStopping(
@@ -74,7 +77,7 @@ class DCDI(BaseModel):
             mode="min",
         )
         trainer = pl.Trainer(
-            max_epochs=60000,
+            max_epochs=max_epochs,
             logger=WandbLogger(project=wandb_project, reinit=True)
             if log_wandb
             else False,
