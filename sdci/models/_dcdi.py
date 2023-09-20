@@ -7,8 +7,8 @@ import wandb
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 
-from third_party.dcdi import MLPGaussianModel
-from third_party.callback import (
+from ..third_party.dcdi import MLPGaussianModel
+from ..third_party.callback import (
     AugLagrangianCallback,
     ConditionalEarlyStopping,
     CustomProgressBar,

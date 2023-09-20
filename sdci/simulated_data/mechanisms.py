@@ -3,9 +3,9 @@ from typing import Union, Optional, Callable
 import networkx as nx
 import torch
 
-from causal_model import CausalModel
-from causal_model.mechanisms import ParametricConditionalDistribution
-from modules import DenseLayers
+from ..causal_model import CausalModel
+from ..causal_model.mechanisms import ParametricConditionalDistribution
+from ..models.modules import DenseLayers
 
 
 class ParentsToChildMLP(torch.nn.Module):
@@ -56,7 +56,11 @@ class ParentsToChildMLP(torch.nn.Module):
             self.mlp = None
         else:
             self.mlp = DenseLayers(
-                self.n_parents, self.n_outputs, hidden_dims, activation=activation, **kwargs
+                self.n_parents,
+                self.n_outputs,
+                hidden_dims,
+                activation=activation,
+                **kwargs,
             )
             self.mlp.reset_parameters_away_from_zero()
 
@@ -80,12 +84,15 @@ class ParentsToChildMLP(torch.nn.Module):
         if self.n_parents == 0:
             return {**self.outputs_with_defaults, **self.extra_outputs}
         # we sort the keys to have a consistent order of parents
-        x = torch.stack([parents_values[parent] for parent in sorted(parents_values.keys())], dim=1)
+        x = torch.stack(
+            [parents_values[parent] for parent in sorted(parents_values.keys())], dim=1
+        )
         output = self.mlp(x)
         # chunk the output into the different variables
         output = torch.split(output, 1, dim=1)
         output = {
-            name: value.squeeze(1) for name, value in zip(self.outputs_with_defaults.keys(), output)
+            name: value.squeeze(1)
+            for name, value in zip(self.outputs_with_defaults.keys(), output)
         }
         if self.outputs_transform is not None:
             for name, transform in self.outputs_transform.items():

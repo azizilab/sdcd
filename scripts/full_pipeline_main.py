@@ -1,18 +1,22 @@
+import sys
+
+sys.path.append("./")
+
 import os
 
 import click
 import numpy as np
 import wandb
 
-import simulated_data.deprecated_simulation as deprecated_simulation
-from utils import (
+from sdci.simulated_data import deprecated_simulation
+from sdci.utils import (
     set_random_seed_all,
     create_intervention_dataset,
     subset_interventions,
 )
-from simulated_data import random_model_gaussian_global_variance
+from sdci.simulated_data import random_model_gaussian_global_variance
 
-from models import SDCI, DCDI, DCDFG, DAGMA
+from sdci.models import SDCI, DCDI, DCDFG, DAGMA
 
 
 def generate_dataset_deprecated(n, d, seed, frac_interventions, n_edges_per_d=5):
@@ -46,7 +50,14 @@ def generate_dataset_deprecated(n, d, seed, frac_interventions, n_edges_per_d=5)
 
 
 def generate_dataset(
-    n, d, seed, frac_interventions, n_edges_per_d=5, dataset="ER", scale=None, normalize=False
+    n,
+    d,
+    seed,
+    frac_interventions,
+    n_edges_per_d=5,
+    dataset="ER",
+    scale=None,
+    normalize=False,
 ):
     assert n_edges_per_d < d
     n_edges = n_edges_per_d * d

@@ -8,7 +8,7 @@ import torch.distributions as dist
 
 from torch.utils.data import DataLoader
 
-from modules import DenseLayers
+from models.modules import DenseLayers
 
 
 class AutoEncoder(nn.Module):
@@ -31,11 +31,19 @@ class AutoEncoder(nn.Module):
         self.activation = activation
         self.adjacency_p = adjacency_p
         self.encoder = DenseLayers(
-            self.in_dim, self.latent_dim, hidden_dims_encoder, activation, batch_norm=False
+            self.in_dim,
+            self.latent_dim,
+            hidden_dims_encoder,
+            activation,
+            batch_norm=False,
         )
 
         self.decoder = DenseLayers(
-            self.latent_dim, self.in_dim, hidden_dims_decoder, activation, batch_norm=False
+            self.latent_dim,
+            self.in_dim,
+            hidden_dims_decoder,
+            activation,
+            batch_norm=False,
         )
 
         # Initialize feature's specific parameter: scale, dispersion ...
@@ -136,4 +144,3 @@ class AutoEncoder(nn.Module):
         x_hat = self.forward(x)
         reconstruction_loss = torch.sum((x - x_hat) ** 2)
         return reconstruction_loss
-

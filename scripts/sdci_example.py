@@ -1,9 +1,13 @@
 """Example of running SDCI on synthetic data."""
+import sys
+
+sys.path.append("./")
 import wandb
 
+from sdci.models import SDCI
+from sdci.utils import create_intervention_dataset
+
 from full_pipeline_main import generate_dataset
-from models import SDCI
-from utils import create_intervention_dataset
 
 
 seed = 0

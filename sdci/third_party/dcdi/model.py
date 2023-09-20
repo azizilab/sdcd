@@ -1,30 +1,25 @@
 """
 GraN-DAG
-
 Copyright © 2019 Sébastien Lachapelle, Philippe Brouillard, Tristan Deleu
-
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
 rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
 persons to whom the Software is furnished to do so, subject to the following conditions:
-
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
 Software.
-
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
 WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 """
 import numpy as np
 import pytorch_lightning as pl
 import torch
 
-from third_party.dcdfg.module import MLPModularGaussianModule
+from .module import MLPGaussianModule
 
 
-class MLPModuleGaussianModel(pl.LightningModule):
+class MLPGaussianModel(pl.LightningModule):
     """
     Lightning module that runs augmented lagrangian
     """
@@ -33,23 +28,14 @@ class MLPModuleGaussianModel(pl.LightningModule):
         self,
         num_vars,
         num_layers,
-        num_modules,
         hid_dim,
-        nonlin="leaky_relu",
         lr_init=1e-3,
         reg_coeff=0.1,
         constraint_mode="exp",
     ):
         super().__init__()
-        assert num_modules <= num_vars
-
-        self.module = MLPModularGaussianModule(
-            num_vars,
-            num_layers,
-            num_modules,
-            hid_dim,
-            nonlin=nonlin,
-            constraint_mode=constraint_mode,
+        self.module = MLPGaussianModule(
+            num_vars, num_layers, hid_dim, constraint_mode=constraint_mode
         )
         # augmented lagrangian params
         # mu: penalty
@@ -58,13 +44,11 @@ class MLPModuleGaussianModel(pl.LightningModule):
         self.gamma_init = 0.0
         self.omega_gamma = 1e-4
         self.omega_mu = 0.9
-        self.h_threshold = 1e-8
-        self.mu_mult_factor = 2
+        self.h_threshold = 1e-7
+        self.mu_mult_factor = 2.0
+
         # opt params
         self.save_hyperparameters()
-        self.hparams["name"] = self.__class__.__name__
-        self.hparams["module_name"] = self.module.__class__.__name__
-
         self.lr_init = lr_init
         self.reg_coeff = reg_coeff
         self.constraint_mode = constraint_mode
@@ -91,11 +75,7 @@ class MLPModuleGaussianModel(pl.LightningModule):
         self.stationary_points = 0.0
 
     def forward(self, data):
-        x, masks, regimes = data
-        log_likelihood = torch.sum(
-            self.module.log_likelihood(x) * masks, dim=0
-        ) / masks.size(0)
-        return -torch.mean(log_likelihood)
+        return data
 
     def get_augmented_lagrangian(self, nll, constraint_violation, reg):
         # compute augmented langrangian
@@ -149,11 +129,12 @@ class MLPModuleGaussianModel(pl.LightningModule):
         self.not_nlls_val += [agg["aug_lagrangian"] - agg["nll"]]
         self.nlls_val += [agg["nll"]]
         self.regs += [self.reg_value]
-        # self.acyclic = self.module.check_acyclicity()
+        self.acyclic = self.module.check_acyclicity()
 
         self.log("Val/aug_lagrangian", agg["aug_lagrangian"])
         self.log("Val/nll", agg["nll"])
         self.log("Val/not_nll", agg["aug_lagrangian"] - agg["nll"])
+        self.log("Val/acyclic", float(self.acyclic))
         self.log("Val/constraint_violation", agg["constraint"])
         self.log("Val/reg_value", agg["reg"])
 
@@ -178,12 +159,7 @@ class MLPModuleGaussianModel(pl.LightningModule):
                 delta_gamma = (t1 - t0) / 100
 
         # if we found a stationary point, but that is not satisfying the acyclicity constraints
-        if (
-            self.constraint_value > self.h_threshold
-            and not self.acyclic
-            and self.mu < 1e15
-            or self.stationary_points < 10
-        ):
+        if self.constraint_value > self.h_threshold or not self.acyclic:
             if abs(delta_gamma) < self.omega_gamma or delta_gamma > 0:
                 self.stationary_points += 1
                 self.log("Monitor/stationary", self.stationary_points)

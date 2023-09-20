@@ -1,7 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from causal_model.model import CausalModel
+from ..causal_model.model import CausalModel
 
 
 def draw_dag_topological_sort(dag):

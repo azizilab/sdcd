@@ -1,9 +1,11 @@
-from causal_model import CausalModel, scale_mechanism
-from simulated_data.graph import random_dag, chain_graph
-from simulated_data.mechanisms import generate_gaussian_mlp_fixed_scale_mechanisms
+from ..causal_model import CausalModel, scale_mechanism
+from .graph import random_dag, chain_graph
+from .mechanisms import generate_gaussian_mlp_fixed_scale_mechanisms
 
 
-def random_model_gaussian_global_variance(n_nodes, n_edges, knockdown=0.1, scale=1.0, dag_type="ER"):
+def random_model_gaussian_global_variance(
+    n_nodes, n_edges, knockdown=0.1, scale=1.0, dag_type="ER"
+):
     if dag_type == "ER":
         dag = random_dag(n_nodes, n_edges)
     elif dag_type == "chain":

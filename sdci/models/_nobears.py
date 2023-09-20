@@ -2,17 +2,18 @@ import time
 from typing import Optional
 
 import numpy as np
+import tensorflow as tf
 from torch.utils.data import Dataset
 import wandb
 
-from third_party.sortnregress import sortnregress
+from ..third_party.nobears import NoBearsTF, W_reg_init
 
 from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict(w_threshold=0.3)
 
 
-class Sortnregress(BaseModel):
+class NOBEARS(BaseModel):
     def __init__(self):
         super().__init__()
         self._adj_matrix = None
@@ -22,7 +23,7 @@ class Sortnregress(BaseModel):
         self,
         dataset: Dataset,
         log_wandb: bool = False,
-        wandb_project: str = "sortnregress",
+        wandb_project: str = "NOBEARS",
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
@@ -33,18 +34,30 @@ class Sortnregress(BaseModel):
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
-                name="sortnregress",
+                name="NOTEARS",
                 config=wandb_config_dict,
             )
         data = dataset.tensors[0].numpy()
 
-        start = time.time()
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
-        self._model = -1
-        w_threshold = self._model_kwargs["w_threshold"]
-        self._adj_matrix = sortnregress(
-            data,
-        )
+        init_kwargs = self._model_kwargs.copy()
+        w_threshold = init_kwargs.pop("w_threshold")
+        start = time.time()
+
+        self._W_init = W_reg_init(data).astype("float32")
+        with tf.device("/gpu:0"):
+            tf.compat.v1.reset_default_graph()
+
+            self._model = NoBearsTF(**init_kwargs)
+            self._model.construct_graph(data, self._W_init)
+
+        sess = tf.compat.v1.Session()
+        sess.run(self._model.graph_nodes["init_vars"])
+        self._model.model_init_train(sess)
+
+        self._model.model_train(sess)
+
+        self._adj_matrix = sess.run(self._model.graph_nodes["weight_ema"])
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
