@@ -9,8 +9,8 @@ from torch import nn
 import wandb
 import networkx as nx
 
-from modules import AutoEncoderLayers
-from utils import (
+from .modules import AutoEncoderLayers
+from ..utils import (
     print_graph_from_weights,
     move_modules_to_device,
     TorchStandardScaler,

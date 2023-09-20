@@ -2,18 +2,21 @@ import time
 from typing import Optional
 
 import numpy as np
-import tensorflow as tf
 from torch.utils.data import Dataset
 import wandb
 
-from third_party.nobears import NoBearsTF, W_reg_init
+from ..third_party.notears import notears_linear
 
 from .base._base_model import BaseModel
 
-_DEFAULT_MODEL_KWARGS = dict(w_threshold=0.3)
+_DEFAULT_MODEL_KWARGS = dict(
+    lambda1=0.1,
+    loss_type="l2",
+    w_threshold=0.3,
+)
 
 
-class NOBEARS(BaseModel):
+class NOTEARS(BaseModel):
     def __init__(self):
         super().__init__()
         self._adj_matrix = None
@@ -23,7 +26,7 @@ class NOBEARS(BaseModel):
         self,
         dataset: Dataset,
         log_wandb: bool = False,
-        wandb_project: str = "NOBEARS",
+        wandb_project: str = "NOTEARS",
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
@@ -39,25 +42,16 @@ class NOBEARS(BaseModel):
             )
         data = dataset.tensors[0].numpy()
 
-        self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
-        init_kwargs = self._model_kwargs.copy()
-        w_threshold = init_kwargs.pop("w_threshold")
         start = time.time()
-
-        self._W_init = W_reg_init(data).astype("float32")
-        with tf.device("/gpu:0"):
-            tf.compat.v1.reset_default_graph()
-
-            self._model = NoBearsTF(**init_kwargs)
-            self._model.construct_graph(data, self._W_init)
-
-        sess = tf.compat.v1.Session()
-        sess.run(self._model.graph_nodes["init_vars"])
-        self._model.model_init_train(sess)
-
-        self._model.model_train(sess)
-
-        self._adj_matrix = sess.run(self._model.graph_nodes["weight_ema"])
+        self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
+        self._model = -1
+        w_threshold = self._model_kwargs["w_threshold"]
+        self._adj_matrix = notears_linear(
+            data,
+            lambda1=self._model_kwargs["lambda1"],
+            loss_type=self._model_kwargs["loss_type"],
+            w_threshold=np.inf,
+        )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 

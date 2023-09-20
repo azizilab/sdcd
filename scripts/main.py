@@ -1,11 +1,15 @@
+import sys
+
+sys.path.append("./")
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch.utils.data
 from torch import nn
 
-import simulated_data.deprecated_simulation as deprecated_simulation
-from modules import AutoEncoderLayers
-from utils import set_random_seed_all, print_graph_from_weights
+import sdci.simulated_data.deprecated_simulation as deprecated_simulation
+from sdci.models.modules import AutoEncoderLayers
+from sdci.utils import set_random_seed_all, print_graph_from_weights
 
 set_random_seed_all(0)
 
