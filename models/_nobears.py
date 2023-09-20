@@ -2,24 +2,18 @@ import time
 from typing import Optional
 
 import numpy as np
+import tensorflow as tf
 from torch.utils.data import Dataset
 import wandb
 
-from third_party.dagma import DagmaNonlinear, DagmaMLP
+from third_party.nobears import NoBearsTF, W_reg_init
 
 from .base._base_model import BaseModel
 
-_DEFAULT_MODEL_KWARGS = dict(
-    num_layers=2,
-    num_modules=20,
-    hid_dim=16,
-    lambda1=0.02,
-    lambda2=0.005,
-    threshold=0.3,
-)
+_DEFAULT_MODEL_KWARGS = dict(w_threshold=0.3)
 
 
-class DAGMA(BaseModel):
+class NOBEARS(BaseModel):
     def __init__(self):
         super().__init__()
         self._adj_matrix = None
@@ -29,7 +23,7 @@ class DAGMA(BaseModel):
         self,
         dataset: Dataset,
         log_wandb: bool = False,
-        wandb_project: str = "DAGMA",
+        wandb_project: str = "NOBEARS",
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
@@ -40,30 +34,35 @@ class DAGMA(BaseModel):
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
-                name="DAGMA",
+                name="NOTEARS",
                 config=wandb_config_dict,
             )
-        data = dataset.tensors[0]
-        d = data.shape[1]
+        data = dataset.tensors[0].numpy()
 
-        start = time.time()
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
-        eq_model = DagmaMLP(dims=[d, 10, 1], bias=True)
-        self._model = DagmaNonlinear(eq_model)
+        init_kwargs = self._model_kwargs.copy()
+        w_threshold = init_kwargs.pop("w_threshold")
+        start = time.time()
 
-        self._model.fit(
-            data,
-            lambda1=self._model_kwargs["lambda1"],
-            lambda2=self._model_kwargs["lambda2"],
-            w_threshold=self._model_kwargs["threshold"],
-            log_wandb=log_wandb,
-        )
+        self._W_init = W_reg_init(data).astype("float32")
+        with tf.device("/gpu:0"):
+            tf.compat.v1.reset_default_graph()
+
+            self._model = NoBearsTF(**init_kwargs)
+            self._model.construct_graph(data, self._W_init)
+
+        sess = tf.compat.v1.Session()
+        sess.run(self._model.graph_nodes["init_vars"])
+        self._model.model_init_train(sess)
+
+        self._model.model_train(sess)
+
+        self._adj_matrix = sess.run(self._model.graph_nodes["weight_ema"])
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
-        self._adj_matrix = self._model.model.fc1_to_adj()
         self._adj_matrix_thresh = np.array(
-            self._adj_matrix > self._model_kwargs["threshold"], dtype=int
+            np.abs(self._adj_matrix) > w_threshold, dtype=int
         )
 
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
