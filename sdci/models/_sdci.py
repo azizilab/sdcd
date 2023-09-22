@@ -151,6 +151,7 @@ class SDCI(BaseModel):
             B_true=B_true,
             device=device,
             return_next_epoch=True,
+            early_stopping=False,
             **train_kwargs,
         )
 
