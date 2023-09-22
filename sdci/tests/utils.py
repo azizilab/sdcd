@@ -1,8 +1,8 @@
 import numpy as np
 from torch.utils.data import Dataset
 
-from simulated_data import random_model_gaussian_global_variance
-from utils import create_intervention_dataset
+from ..simulated_data import random_model_gaussian_global_variance
+from ..utils import create_intervention_dataset
 
 
 def generate_test_dataset(

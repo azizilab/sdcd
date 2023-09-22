@@ -1,6 +1,6 @@
 import pytest
 
-from models import (
+from ..models import (
     SDCI,
     DCDI,
     DCDFG,
@@ -28,6 +28,15 @@ def test_sdci(interventional_dataset):
     m.train(interventional_dataset)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
+
+
+def test_sdci_gumbel(interventional_dataset):
+    m = SDCI(use_gumbel=True)
+    m.train(interventional_dataset)
+    assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
+    assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
+    m.fix_gumbel_threshold()
+    assert not m._model.layers[0].gumbel_adjacency.log_alpha.requires_grad
 
 
 def test_dcdi(interventional_dataset):

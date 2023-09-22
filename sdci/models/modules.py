@@ -10,6 +10,8 @@ import torch.distributions as dist
 
 import numpy as np
 
+from ..third_party.utils.dag_optim import GumbelAdjacency
+
 
 def get_activation(activation: Literal["relu", "sigmoid", "tanh", "linear"]):
     """
@@ -140,13 +142,28 @@ class LinearParallel(nn.Module):
 
 class DispatcherLayer(nn.Module):
     def __init__(
-        self, in_dim, out_dim, hidden_dim, adjacency_p=2.0, mask=None, warmstart=False
+        self,
+        in_dim,
+        out_dim,
+        hidden_dim,
+        adjacency_p=2.0,
+        mask=None,
+        warmstart=False,
+        use_gumbel=False,
     ):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.hidden_dim = hidden_dim
         self.adjacency_p = adjacency_p
+
+        self.use_gumbel = use_gumbel
+        if self.use_gumbel:
+            self.register_buffer(
+                "adjacency_mask",
+                torch.ones((self.in_dim, self.in_dim)) - torch.eye(self.in_dim),
+            )
+            self.gumbel_adjacency = GumbelAdjacency(self.in_dim)
 
         if mask is not None and not warmstart:
             self.register_buffer("mask", torch.tensor(mask).float())
@@ -177,7 +194,16 @@ class DispatcherLayer(nn.Module):
         Returns:
             torch.Tensor: output tensor of shape (batch_size, out_dim, hidden_dim)
         """
-        x = torch.einsum("ni, ioh -> noh", x, self.weight) + self.bias
+        if self.use_gumbel:
+            bs = x.size(0)
+            M = self.gumbel_adjacency(bs)
+            adj = self.adjacency_mask.unsqueeze(0)
+            x = (
+                torch.einsum("ni, lio, nio, ioh -> noh", x, adj, M, self.weight)
+                + self.bias
+            )
+        else:
+            x = torch.einsum("ni, ioh -> noh", x, self.weight) + self.bias
         return x
 
     @torch.no_grad()
@@ -191,6 +217,8 @@ class DispatcherLayer(nn.Module):
         nn.init.uniform_(self.bias, -bound, bound)
 
     def get_adjacency_matrix(self):
+        if self.use_gumbel:
+            return self.gumbel_adjacency.get_proba() * self.adjacency_mask
         return torch.linalg.vector_norm(self.weight, dim=2, ord=self.adjacency_p)
 
     def __repr__(self):
@@ -216,7 +244,7 @@ class AutoEncoderLayers(nn.Module):
         mask=None,
         warmstart=False,
         dag_penalty_flavor: Literal["scc", "power_iteration", "logdet", "none"] = "scc",
-        l2_on_dispatcher: bool = True,
+        use_gumbel=False,
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -225,7 +253,7 @@ class AutoEncoderLayers(nn.Module):
         self.model_variance_flavor = model_variance_flavor
         self.shared_layers = shared_layers
         self.adjacency_p = adjacency_p
-        self.l2_on_dispatcher = l2_on_dispatcher
+        self.use_gumbel = use_gumbel
 
         if (
             self.model_variance_flavor == "nn"
@@ -252,6 +280,7 @@ class AutoEncoderLayers(nn.Module):
                 adjacency_p=self.adjacency_p,
                 mask=mask,
                 warmstart=warmstart,
+                use_gumbel=self.use_gumbel,
             )
         )
 
@@ -341,6 +370,11 @@ class AutoEncoderLayers(nn.Module):
 
     def l1_reg_dispatcher(self):
         # maybe change to abs of the collapsed weights (sum over hidden dim)
+        if self.use_gumbel:
+            return torch.sum(
+                self.layers[0].gumbel_adjacency.get_proba()
+                * self.layers[0].adjacency_mask
+            )
         return torch.sum(torch.abs(self.layers[0].weight))
 
     def l2_reg_all_weights(self):
@@ -348,8 +382,7 @@ class AutoEncoderLayers(nn.Module):
             [
                 torch.sum(p**2)
                 for p_name, p in self.named_parameters()
-                if p.requires_grad
-                and (p_name != "layers.0._weight" or self.l2_on_dispatcher)
+                if p.requires_grad and (p_name != "layers.0.gumbel_adjacency.log_alpha")
             ]
         )
 
