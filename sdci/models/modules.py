@@ -536,9 +536,10 @@ class PowerIterationGradient(nn.Module):
 
     def compute_gradient(self, adj_mtx):
         """Gradient eigenvalue"""
-        A = adj_mtx**2
-        # self.iterate(4, A)
-        self.init_eigenvect(adj_mtx)
+        A = adj_mtx#**2
+        # fixed penalty
+        self.iterate(A, 5)
+        # self.init_eigenvect(adj_mtx)
         grad = self.u[:, None] @ self.v[None] / (self.u.dot(self.v) + 1e-6)
         # grad += torch.eye(self.d)
         # grad += A.T
