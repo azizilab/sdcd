@@ -254,6 +254,9 @@ def _train(
     gamma_schedule = config.get("gamma_schedule", "linear")
     if gamma_schedule == "linear":
         gammas = np.linspace(0, max_gamma, n_epochs)
+    elif "power" in gamma_schedule:
+        power = float(gamma_schedule.split("_")[1])
+        gammas = np.power(np.linspace(0, max_gamma, n_epochs), power)
     elif gamma_schedule == "exponential":
         gammas = np.exp(np.linspace(0, np.log(max_gamma), n_epochs))
     else:
