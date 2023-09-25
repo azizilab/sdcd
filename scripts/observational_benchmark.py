@@ -17,6 +17,19 @@ from sdci.utils import (
 from sdci.simulated_data import random_model_gaussian_global_variance
 from sdci.models import SDCI, DCDI, DCDFG, DAGMA, NOBEARS, NOTEARS, Sortnregress
 
+MODEL_CLS_DCT = {
+    model_cls.__name__: model_cls
+    for model_cls in [
+        SDCI,
+        DAGMA,
+        NOBEARS,
+        NOTEARS,
+        Sortnregress,
+        DCDFG,
+        DCDI,
+    ]
+}
+
 
 def generate_observational_dataset(
     n,
@@ -116,11 +129,12 @@ def run_model(
 @click.option("--d", default=10, type=int, help="Number of dimensions")
 @click.option("--s", type=int, default=5, help="Number of edges per dimension")
 @click.option("--seed", default=0, help="Random seed")
+@click.option("--model", type=str, default="all", help="Which models to run")
 @click.option("--force", default=False, help="If results exist, redo anyways.")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def _run_full_pipeline(n, d, s, seed, force, save_mtxs):
+def _run_full_pipeline(n, d, s, seed, model, force, save_mtxs):
     dataset_name = f"observational_n{n}_d{d}_edges{s}_seed{seed}"
     save_dir = f"saved_mtxs/{dataset_name}"
     if save_mtxs:
@@ -143,15 +157,12 @@ def _run_full_pipeline(n, d, s, seed, force, save_mtxs):
         results_df = pd.read_csv(results_save_path, index_col=0)
         results_df_rows = results_df.to_dict(orient="records")
 
-    for model_cls in [
-        SDCI,
-        DCDI,
-        DCDFG,
-        DAGMA,
-        NOBEARS,
-        NOTEARS,
-        Sortnregress,
-    ]:
+    if model == "all":
+        model_classes = MODEL_CLS_DCT
+    else:
+        model_classes = {model: MODEL_CLS_DCT[model]}
+
+    for model_cls_name, model_cls in model_classes.items():
         metrics_dict = run_model(
             model_cls,
             X_dataset,
@@ -167,7 +178,7 @@ def _run_full_pipeline(n, d, s, seed, force, save_mtxs):
         pprint.pprint(metrics_dict)
         results_df_rows.append(metrics_dict)
         results_df = pd.DataFrame.from_records(results_df_rows)
-        results_df.to_csv(f"saved_mtxs/{dataset_name}/results.csv")
+        results_df.to_csv(f"saved_mtxs/{dataset_name}/{model_cls_name}.csv")
 
 
 if __name__ == "__main__":
