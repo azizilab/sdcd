@@ -26,8 +26,8 @@ _DEFAULT_STAGE1_KWARGS = {
     "batch_size": 256,
     "n_epochs": 20_000,
     "alpha": 1e-2,
-    "max_gamma": 0,
     "beta": 2e-4,
+    "gamma_increment": 0,
     "n_epochs_check": 100,
     "mask_threshold": 0.2,
 }
@@ -37,7 +37,7 @@ _DEFAULT_STAGE2_KWARGS = {
     "n_epochs": 20_000,
     "alpha": 2e-5,
     "beta": 1e-4,
-    "max_gamma": 30,
+    "gamma_increment": 0.015,
     "gamma_schedule": "linear",
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.01,
@@ -252,12 +252,15 @@ def _train(
     # unpack config
     n_epochs = config["n_epochs"]
     alpha = config["alpha"]
-    max_gamma = config["max_gamma"]
+    gamma_increment = config["gamma_increment"]
     gamma_schedule = config.get("gamma_schedule", "linear")
     if gamma_schedule == "linear":
-        gammas = np.linspace(0, max_gamma, n_epochs)
+        gammas = np.linspace(0, gamma_increment * n_epochs, n_epochs)
+    elif "power" in gamma_schedule:
+        power = float(gamma_schedule.split("_")[1])
+        gammas = np.power(np.linspace(0, gamma_increment * n_epochs, n_epochs), power)
     elif gamma_schedule == "exponential":
-        gammas = np.exp(np.linspace(0, np.log(max_gamma), n_epochs))
+        gammas = np.exp(np.linspace(0, np.log(gamma_increment * n_epochs), n_epochs))
     else:
         raise ValueError(f"Unknown gamma schedule {gamma_schedule}.")
     beta = config["beta"]
