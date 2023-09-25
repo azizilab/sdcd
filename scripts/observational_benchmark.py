@@ -145,8 +145,8 @@ def _run_full_pipeline(n, d, s, seed, force, save_mtxs):
 
     for model_cls in [
         SDCI,
-        # DCDI,
-        # DCDFG,
+        DCDI,
+        DCDFG,
         DAGMA,
         NOBEARS,
         NOTEARS,

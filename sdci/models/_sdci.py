@@ -63,6 +63,7 @@ class SDCI(BaseModel):
         self,
         dataset: Dataset,
         val_dataset: Optional[Dataset] = None,
+        val_fraction: 0.2 = float,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_name: str = "SDCI",
@@ -92,7 +93,7 @@ class SDCI(BaseModel):
             )
 
         if val_dataset is None:
-            dataset, val_dataset = train_val_split(dataset)
+            dataset, val_dataset = train_val_split(dataset, val_fraction=val_fraction)
         val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
 
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
