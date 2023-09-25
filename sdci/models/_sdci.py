@@ -63,7 +63,7 @@ class SDCI(BaseModel):
         self,
         dataset: Dataset,
         val_dataset: Optional[Dataset] = None,
-        val_fraction: 0.2 = float,
+        val_fraction: float = 0.2,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_name: str = "SDCI",
