@@ -15,6 +15,7 @@ from ..utils import (
     move_modules_to_device,
     TorchStandardScaler,
     compute_metrics,
+    train_val_split,
 )
 
 from .base._base_model import BaseModel
@@ -90,9 +91,9 @@ class SDCI(BaseModel):
                 scaler.transform(val_dataset[:][0]), *val_dataset[:][1:]
             )
 
-        val_dataloader = None
-        if val_dataset is not None:
-            val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
+        if val_dataset is None:
+            dataset, val_dataset = train_val_split(dataset)
+        val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
 
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
