@@ -12,7 +12,7 @@ do
     for seed in "${seed_vals[@]}"
     do
         # Run the Python script with the current values of d and seed
-        python3 full_pipeline_main.py --n 10000 --d $d --seed $seed --model sdci
+        python3 observational_benchmark.py --n 10000 --d $d --s 5 --seed $seed --model sdci
 
         # Add a newline for separation between iterations
         echo ""
