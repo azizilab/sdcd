@@ -201,7 +201,6 @@ class SDCI(BaseModel):
             B_true=B_true,
             start_wandb_epoch=next_epoch,
             device=device,
-            early_stopping=False,
             **train_kwargs,
         )
         self._train_runtime_in_sec = time.time() - start
