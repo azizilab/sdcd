@@ -315,6 +315,9 @@ def _train(
     freeze_gamma_threshold = config.get("freeze_gamma_threshold", None)
     n_epochs_check = config["n_epochs_check"]
 
+    if freeze_gamma_at_dag:
+        assert freeze_gamma_threshold < threshold
+
     is_prescreen = model.dag_penalty_flavor == "none"
 
     n_observations = dataloader.batch_size * len(dataloader)
