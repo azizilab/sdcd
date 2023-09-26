@@ -5,6 +5,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader, random_split
 import wandb
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
 
 from ..third_party.dcdfg import MLPModuleGaussianModel
@@ -40,6 +41,7 @@ class DCDFG(BaseModel):
         wandb_project: str = "DCDFG",
         wandb_config_dict: Optional[dict] = None,
         val_fraction: float = 0.2,
+        finetune: bool = False,
         **model_kwargs,
     ):
         if log_wandb:
@@ -95,12 +97,39 @@ class DCDFG(BaseModel):
             DataLoader(val_dataset, num_workers=8, batch_size=256),
         )
 
-        self._train_runtime_in_sec = time.time() - start
-        print(f"Finished training in {self._train_runtime_in_sec} seconds.")
-
+        # freeze and prune adjacency
         # Save unthresholded matrix because thresholding is destructive.
         self._adj_matrix = self._model.module.get_w_adj().detach().cpu().numpy()
         self._model.module.threshold()
+
+        if finetune:
+            # WE NEED THIS BECAUSE IF it's exactly a DAG THE POWER ITERATIONS DOESN'T CONVERGE
+            # TODO Just refactor and remove constraint at validation time
+            self._model.module.constraint_mode = "exp"
+            # remove dag constraints: we have a prediction problem now!
+            self._model.gamma = 0.0
+            self._model.mu = 0.0
+
+            # Step 2:fine tune weights with frozen model
+            # LOG CONFIG
+            early_stop_2_callback = EarlyStopping(
+                monitor="Val/nll", min_delta=1e-6, patience=5, verbose=True, mode="min"
+            )
+            trainer_fine = pl.Trainer(
+                max_epochs=max_epochs,
+                logger=WandbLogger(project=wandb_project, reinit=True),
+                val_check_interval=1.0,
+                callbacks=[early_stop_2_callback, CustomProgressBar()],
+            )
+            trainer_fine.fit(
+                self._model,
+                DataLoader(train_dataset, batch_size=128),
+                DataLoader(val_dataset, num_workers=2, batch_size=256),
+            )
+
+        self._train_runtime_in_sec = time.time() - start
+        print(f"Finished training in {self._train_runtime_in_sec} seconds.")
+
         self._adj_matrix_thresh = np.array(
             self._model.module.weight_mask.detach().cpu().numpy() > 0, dtype=int
         )
