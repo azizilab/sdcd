@@ -67,6 +67,7 @@ class SDCI(BaseModel):
         val_dataset: Optional[Dataset] = None,
         val_fraction: float = 0.2,
         log_wandb: bool = False,
+        finetune: bool = False,
         wandb_project: str = "SDCI",
         wandb_name: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
@@ -205,6 +206,30 @@ class SDCI(BaseModel):
             device=device,
             **train_kwargs,
         )
+
+        # Save unthresholded matrix because thresholding is destructive.
+        self._adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
+        if self.use_gumbel:
+            self.fix_gumbel_threshold()
+        else:
+            self._final_mask = (self._adj_matrix > self.threshold).astype(int)
+            self._model.update_mask(self._final_mask)
+
+        if finetune:
+            self._model = _train(
+                self._model,
+                dataloader,
+                optimizer,
+                {**self._stage2_kwargs, "gamma_increment": 0},
+                val_dataloader=val_dataloader,
+                log_wandb=log_wandb,
+                print_graph=verbose,
+                B_true=B_true,
+                start_wandb_epoch=next_epoch,
+                device=device,
+                **train_kwargs,
+            )
+
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
@@ -222,6 +247,7 @@ class SDCI(BaseModel):
             self._model.layers[0].gumbel_adjacency.log_alpha.requires_grad = False
             self._model.layers[0].adjacency_mask.copy_(higher)
 
+    @staticmethod
     def compute_min_dag_threshold(self) -> float:
         def is_acyclic(adj_matrix):
             return nx.is_directed_acyclic_graph(nx.DiGraph(adj_matrix))
@@ -238,19 +264,18 @@ class SDCI(BaseModel):
 
         adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
         func = lambda threshold: is_acyclic(adj_matrix > threshold)
-        self.threshold = bisect(func, 0, 1)
-        return self.threshold
+        min_dag_threshold = bisect(func, 0, 1)
+        return min_dag_threshold
 
     def get_adjacency_matrix(self, threshold: Union[bool, float] = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
-        adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
         if threshold == False:
-            return adj_matrix
+            return self._adj_matrix
 
         if type(threshold) == bool:
             threshold = self.threshold
-        return (adj_matrix > threshold).astype(int)
+        return (self._adj_matrix > threshold).astype(int)
 
 
 def _train(
