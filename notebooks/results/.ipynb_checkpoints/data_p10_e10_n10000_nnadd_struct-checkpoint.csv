@@ -1,3 +1,0 @@
-,score_fixed,shd_fixed,precision_fixed,recall_fixed,n_edges_pred_fixed,score_dag,shd_dag,precision_dag,recall_dag,n_edges_pred_dag,min_dag_threshold,dataset_i
-0,1,1.0,0.9090909090909091,1.0,11,1,1.0,0.9090909090909091,1.0,11,0.01294708251953125,1
-1,2,2.0,1.0,0.8461538461538461,11,5,5.0,0.7222222222222222,1.0,18,0.00101470947265625,2
