@@ -9,7 +9,6 @@ from torch import nn
 import wandb
 import networkx as nx
 
-from .modules import AutoEncoderLayers
 from ..utils import (
     print_graph_from_weights,
     move_modules_to_device,
@@ -18,6 +17,7 @@ from ..utils import (
 )
 
 from .base._base_model import BaseModel
+from .modules import AutoEncoderLayers
 
 
 _DEFAULT_STAGE1_KWARGS = {
@@ -51,10 +51,12 @@ class SDCI(BaseModel):
         self,
         model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
         standard_scale: bool = False,
+        use_gumbel: bool = False,
     ):
         super().__init__()
         self.model_variance_flavor = model_variance_flavor
         self.standard_scale = standard_scale
+        self.use_gumbel = use_gumbel
         self._stage1_kwargs = None
         self._stage2_kwargs = None
 
@@ -72,7 +74,6 @@ class SDCI(BaseModel):
         train_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
-        l2_on_dispatcher: bool = True,
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
@@ -125,7 +126,7 @@ class SDCI(BaseModel):
             shared_layers=False,
             adjacency_p=2.0,
             dag_penalty_flavor="none",
-            l2_on_dispatcher=l2_on_dispatcher,
+            use_gumbel=self.use_gumbel,
         )
         if device:
             move_modules_to_device(self._ps_model, device)
@@ -178,7 +179,7 @@ class SDCI(BaseModel):
             adjacency_p=2.0,
             dag_penalty_flavor=dag_penalty_flavor,
             mask=self._mask,
-            l2_on_dispatcher=l2_on_dispatcher,
+            use_gumbel=self.use_gumbel,
         )
         if device:
             move_modules_to_device(self._model, device)
@@ -199,10 +200,25 @@ class SDCI(BaseModel):
             B_true=B_true,
             start_wandb_epoch=next_epoch,
             device=device,
+            early_stopping=False,
             **train_kwargs,
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
+
+    def fix_gumbel_threshold(self):
+        assert (
+            self.use_gumbel
+        ), "Not applicable for models that do not use Gumbel adjacency."
+        with torch.no_grad():
+            w_adj = self._model.get_adjacency_matrix()
+            higher = (w_adj > self.threshold).type_as(w_adj)
+            lower = (w_adj <= self.threshold).type_as(w_adj)
+            self._model.layers[0].gumbel_adjacency.log_alpha.copy_(
+                higher * 100 + lower * -100
+            )
+            self._model.layers[0].gumbel_adjacency.log_alpha.requires_grad = False
+            self._model.layers[0].adjacency_mask.copy_(higher)
 
     def compute_min_dag_threshold(self) -> float:
         def is_acyclic(adj_matrix):
