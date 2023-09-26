@@ -1,6 +1,6 @@
 import copy
 import time
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
 
 import numpy as np
 import torch
@@ -33,13 +33,13 @@ _DEFAULT_STAGE1_KWARGS = {
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 2e-3,
     "batch_size": 512,
-    "n_epochs": 1_000,
+    "n_epochs": 2_000,
     "alpha": 1e-3,
     "max_gamma": 100,
     "gamma_schedule": "linear",
     "beta": 5e-5,
     "freeze_gamma_at_dag": True,
-    "freeze_gamma_threshold": 0.5,
+    "freeze_gamma_threshold": 0.05,
     "threshold": 0.3,
     "n_epochs_check": 100,
     "dag_penalty_flavor": "power_iteration",
@@ -170,6 +170,7 @@ class SDCI(BaseModel):
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
+        print(dag_penalty_flavor)
         self._model = AutoEncoderLayers(
             self.d,
             [10],
@@ -200,7 +201,6 @@ class SDCI(BaseModel):
             B_true=B_true,
             start_wandb_epoch=next_epoch,
             device=device,
-            early_stopping=False,
             **train_kwargs,
         )
         self._train_runtime_in_sec = time.time() - start
@@ -239,11 +239,16 @@ class SDCI(BaseModel):
         self.threshold = bisect(func, 0, 1)
         return self.threshold
 
-    def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
+    def get_adjacency_matrix(self, threshold: Union[bool, float] = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
         adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
-        return (adj_matrix > self.threshold).astype(int) if threshold else adj_matrix
+        if threshold == False:
+            return adj_matrix
+
+        if type(threshold) == bool:
+            threshold = self.threshold
+        return (adj_matrix > threshold).astype(int)
 
 
 def _train(
@@ -270,6 +275,9 @@ def _train(
     gamma_schedule = config.get("gamma_schedule", "linear")
     if gamma_schedule == "linear":
         gammas = np.linspace(0, max_gamma, n_epochs)
+    elif "power" in gamma_schedule:
+        power = float(gamma_schedule.split("_")[1])
+        gammas = np.power(np.linspace(0, max_gamma, n_epochs), power)
     elif gamma_schedule == "exponential":
         gammas = np.exp(np.linspace(0, np.log(max_gamma), n_epochs))
     else:
