@@ -1,6 +1,6 @@
 import copy
 import time
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
 
 import numpy as np
 import torch
@@ -9,7 +9,6 @@ from torch import nn
 import wandb
 import networkx as nx
 
-from .modules import AutoEncoderLayers
 from ..utils import (
     print_graph_from_weights,
     move_modules_to_device,
@@ -19,6 +18,7 @@ from ..utils import (
 )
 
 from .base._base_model import BaseModel
+from .modules import AutoEncoderLayers
 
 
 _DEFAULT_STAGE1_KWARGS = {
@@ -52,10 +52,12 @@ class SDCI(BaseModel):
         self,
         model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
         standard_scale: bool = False,
+        use_gumbel: bool = False,
     ):
         super().__init__()
         self.model_variance_flavor = model_variance_flavor
         self.standard_scale = standard_scale
+        self.use_gumbel = use_gumbel
         self._stage1_kwargs = None
         self._stage2_kwargs = None
 
@@ -74,7 +76,6 @@ class SDCI(BaseModel):
         train_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
-        l2_on_dispatcher: bool = True,
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
@@ -127,7 +128,7 @@ class SDCI(BaseModel):
             shared_layers=False,
             adjacency_p=2.0,
             dag_penalty_flavor="none",
-            l2_on_dispatcher=l2_on_dispatcher,
+            use_gumbel=self.use_gumbel,
         )
         if device:
             move_modules_to_device(self._ps_model, device)
@@ -171,6 +172,7 @@ class SDCI(BaseModel):
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
+        print(dag_penalty_flavor)
         self._model = AutoEncoderLayers(
             self.d,
             [10],
@@ -180,7 +182,7 @@ class SDCI(BaseModel):
             adjacency_p=2.0,
             dag_penalty_flavor=dag_penalty_flavor,
             mask=self._mask,
-            l2_on_dispatcher=l2_on_dispatcher,
+            use_gumbel=self.use_gumbel,
         )
         if device:
             move_modules_to_device(self._model, device)
@@ -206,6 +208,20 @@ class SDCI(BaseModel):
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
+    def fix_gumbel_threshold(self):
+        assert (
+            self.use_gumbel
+        ), "Not applicable for models that do not use Gumbel adjacency."
+        with torch.no_grad():
+            w_adj = self._model.get_adjacency_matrix()
+            higher = (w_adj > self.threshold).type_as(w_adj)
+            lower = (w_adj <= self.threshold).type_as(w_adj)
+            self._model.layers[0].gumbel_adjacency.log_alpha.copy_(
+                higher * 100 + lower * -100
+            )
+            self._model.layers[0].gumbel_adjacency.log_alpha.requires_grad = False
+            self._model.layers[0].adjacency_mask.copy_(higher)
+
     def compute_min_dag_threshold(self) -> float:
         def is_acyclic(adj_matrix):
             return nx.is_directed_acyclic_graph(nx.DiGraph(adj_matrix))
@@ -225,11 +241,16 @@ class SDCI(BaseModel):
         self.threshold = bisect(func, 0, 1)
         return self.threshold
 
-    def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
+    def get_adjacency_matrix(self, threshold: Union[bool, float] = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
         adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
-        return (adj_matrix > self.threshold).astype(int) if threshold else adj_matrix
+        if threshold == False:
+            return adj_matrix
+
+        if type(threshold) == bool:
+            threshold = self.threshold
+        return (adj_matrix > threshold).astype(int)
 
 
 def _train(
