@@ -351,7 +351,7 @@ class AutoEncoderLayers(nn.Module):
 
     def update_mask(self, mask):
         mask = (mask.astype(bool) & (1 - np.eye(self.in_dim)).astype(bool)).astype(int)
-        self.layers[0].mask = mask
+        self.layers[0].mask = torch.tensor(mask)
 
     @torch.no_grad()
     def reset_parameters(self):

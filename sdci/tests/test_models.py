@@ -25,14 +25,14 @@ def observational_dataset():
 
 def test_sdci(interventional_dataset):
     m = SDCI()
-    m.train(interventional_dataset)
+    m.train(interventional_dataset, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
 def test_sdci_gumbel(interventional_dataset):
     m = SDCI(use_gumbel=True)
-    m.train(interventional_dataset)
+    m.train(interventional_dataset, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
     m.fix_gumbel_threshold()
@@ -41,14 +41,14 @@ def test_sdci_gumbel(interventional_dataset):
 
 def test_dcdi(interventional_dataset):
     m = DCDI()
-    m.train(interventional_dataset, max_epochs=10)
+    m.train(interventional_dataset, max_epochs=10, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
 def test_dcdfg(interventional_dataset):
     m = DCDFG()
-    m.train(interventional_dataset, num_modules=5, max_epochs=2)
+    m.train(interventional_dataset, num_modules=5, max_epochs=2, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 

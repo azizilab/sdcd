@@ -408,21 +408,25 @@ def _train(
             B_pred = model.get_adjacency_matrix().cpu().detach().numpy()
 
             # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
-            is_dag = nx.is_directed_acyclic_graph(
-                nx.DiGraph(B_pred > freeze_gamma_threshold)
-            )
             if (
                 epoch > max(0.05 * n_epochs, 10)
                 and freeze_gamma_at_dag
                 and gamma_cap is None
-                and is_dag
             ):
-                # If we hit a DAG, freeze the gamma value
-                gamma_cap = gamma
-            elif freeze_gamma_at_dag and gamma_cap is not None and not is_dag:
-                # If we have frozen the gamma value but the graph is not a DAG, unfreeze it
-                gamma_cap = None
-                early_stopping_patience_counter = 0
+                is_dag_freeze = nx.is_directed_acyclic_graph(
+                    nx.DiGraph(B_pred > freeze_gamma_threshold)
+                )
+                if is_dag_freeze:
+                    # If we hit a DAG, freeze the gamma value
+                    gamma_cap = gamma
+            elif freeze_gamma_at_dag and gamma_cap is not None:
+                is_dag_thresh = nx.is_directed_acyclic_graph(
+                    nx.DiGraph(B_pred > threshold)
+                )
+                if not is_dag_thresh:
+                    # If we have frozen the gamma value but the graph is not a DAG, unfreeze it
+                    gamma_cap = None
+                    early_stopping_patience_counter = 0
 
             val_loss = 0.0
             model.eval()
