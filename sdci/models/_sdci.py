@@ -14,6 +14,7 @@ from ..utils import (
     move_modules_to_device,
     TorchStandardScaler,
     compute_metrics,
+    train_val_split,
 )
 
 from .base._base_model import BaseModel
@@ -23,24 +24,24 @@ from .modules import AutoEncoderLayers
 _DEFAULT_STAGE1_KWARGS = {
     "learning_rate": 2e-3,
     "batch_size": 256,
-    "n_epochs": 2_000,
+    "n_epochs": 20_000,
     "alpha": 1e-2,
-    "max_gamma": 0,
     "beta": 2e-4,
+    "gamma_increment": 0,
     "n_epochs_check": 100,
     "mask_threshold": 0.2,
 }
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 2e-3,
-    "batch_size": 512,
-    "n_epochs": 2_000,
-    "alpha": 1e-3,
-    "max_gamma": 100,
+    "batch_size": 256,
+    "n_epochs": 20_000,
+    "alpha": 2e-5,
+    "beta": 1e-4,
+    "gamma_increment": 0.015,
     "gamma_schedule": "linear",
-    "beta": 5e-5,
     "freeze_gamma_at_dag": True,
-    "freeze_gamma_threshold": 0.05,
-    "threshold": 0.3,
+    "freeze_gamma_threshold": 0.01,
+    "threshold": 0.05,
     "n_epochs_check": 100,
     "dag_penalty_flavor": "power_iteration",
 }
@@ -64,6 +65,7 @@ class SDCI(BaseModel):
         self,
         dataset: Dataset,
         val_dataset: Optional[Dataset] = None,
+        val_fraction: float = 0.2,
         log_wandb: bool = False,
         wandb_project: str = "SDCI",
         wandb_name: str = "SDCI",
@@ -91,9 +93,9 @@ class SDCI(BaseModel):
                 scaler.transform(val_dataset[:][0]), *val_dataset[:][1:]
             )
 
-        val_dataloader = None
-        if val_dataset is not None:
-            val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
+        if val_dataset is None:
+            dataset, val_dataset = train_val_split(dataset, val_fraction=val_fraction)
+        val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
 
         ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
         sample_batch = next(iter(ps_dataloader))
@@ -271,15 +273,15 @@ def _train(
     # unpack config
     n_epochs = config["n_epochs"]
     alpha = config["alpha"]
-    max_gamma = config["max_gamma"]
+    gamma_increment = config["gamma_increment"]
     gamma_schedule = config.get("gamma_schedule", "linear")
     if gamma_schedule == "linear":
-        gammas = np.linspace(0, max_gamma, n_epochs)
+        gammas = np.linspace(0, gamma_increment * n_epochs, n_epochs)
     elif "power" in gamma_schedule:
         power = float(gamma_schedule.split("_")[1])
-        gammas = np.power(np.linspace(0, max_gamma, n_epochs), power)
+        gammas = np.power(np.linspace(0, gamma_increment * n_epochs, n_epochs), power)
     elif gamma_schedule == "exponential":
-        gammas = np.exp(np.linspace(0, np.log(max_gamma), n_epochs))
+        gammas = np.exp(np.linspace(0, np.log(gamma_increment * n_epochs), n_epochs))
     else:
         raise ValueError(f"Unknown gamma schedule {gamma_schedule}.")
     beta = config["beta"]
