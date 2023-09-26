@@ -34,7 +34,7 @@ class NOBEARS(BaseModel):
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(
                 project=wandb_project,
-                name="NOTEARS",
+                name="NOBEARS",
                 config=wandb_config_dict,
             )
         data = dataset.tensors[0].numpy()
