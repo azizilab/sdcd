@@ -24,7 +24,7 @@ from .base._base_model import BaseModel
 _DEFAULT_STAGE1_KWARGS = {
     "learning_rate": 2e-3,
     "batch_size": 256,
-    "n_epochs": 2_000,
+    "n_epochs": 20_000,
     "alpha": 1e-2,
     "max_gamma": 0,
     "beta": 2e-4,
@@ -33,15 +33,15 @@ _DEFAULT_STAGE1_KWARGS = {
 }
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 2e-3,
-    "batch_size": 512,
-    "n_epochs": 1_000,
-    "alpha": 1e-3,
-    "max_gamma": 100,
+    "batch_size": 256,
+    "n_epochs": 20_000,
+    "alpha": 2e-5,
+    "beta": 1e-4,
+    "max_gamma": 30,
     "gamma_schedule": "linear",
-    "beta": 5e-5,
     "freeze_gamma_at_dag": True,
-    "freeze_gamma_threshold": 0.5,
-    "threshold": 0.3,
+    "freeze_gamma_threshold": 0.01,
+    "threshold": 0.05,
     "n_epochs_check": 100,
     "dag_penalty_flavor": "power_iteration",
 }
