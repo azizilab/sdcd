@@ -327,9 +327,11 @@ def _train(
     #######################
     # Begin training loop #
     #######################
+    gamma_idx = 0
     for epoch in range(n_epochs):
         if gamma_cap is None:
-            gamma = gammas[epoch]
+            gamma = gammas[gamma_idx]
+            gamma_idx += 1
         else:
             gamma = gamma_cap
 
@@ -362,18 +364,6 @@ def _train(
 
         if epoch % n_epochs_check == 0:
             B_pred = model.get_adjacency_matrix().cpu().detach().numpy()
-
-            if (
-                epoch > max(0.05 * n_epochs, 10)
-                and freeze_gamma_at_dag
-                and gamma_cap is None
-            ):
-                # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
-                is_dag = nx.is_directed_acyclic_graph(
-                    nx.DiGraph(B_pred > freeze_gamma_threshold)
-                )
-                if is_dag:
-                    gamma_cap = gamma
 
             epoch_loss /= len(dataloader)
             if B_true is not None:
@@ -415,6 +405,25 @@ def _train(
         # Begin validation step #
         #########################
         if epoch % n_epochs_check_validation == 0 and val_dataloader is not None:
+            B_pred = model.get_adjacency_matrix().cpu().detach().numpy()
+
+            # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
+            is_dag = nx.is_directed_acyclic_graph(
+                nx.DiGraph(B_pred > freeze_gamma_threshold)
+            )
+            if (
+                epoch > max(0.05 * n_epochs, 10)
+                and freeze_gamma_at_dag
+                and gamma_cap is None
+                and is_dag
+            ):
+                # If we hit a DAG, freeze the gamma value
+                gamma_cap = gamma
+            elif freeze_gamma_at_dag and gamma_cap is not None and not is_dag:
+                # If we have frozen the gamma value but the graph is not a DAG, unfreeze it
+                gamma_cap = None
+                early_stopping_patience_counter = 0
+
             val_loss = 0.0
             model.eval()
             for batch in val_dataloader:
@@ -437,6 +446,7 @@ def _train(
                     }
                 )
 
+            # Early stopping patience should only increase when gamma is frozen (the graph is still a DAG at threshold)
             if early_stopping and (not freeze_gamma_at_dag or gamma_cap is not None):
                 if val_loss < best_val_loss:
                     best_model = copy.deepcopy(model)
