@@ -349,6 +349,10 @@ class AutoEncoderLayers(nn.Module):
     def get_adjacency_matrix(self):
         return self.layers[0].get_adjacency_matrix()
 
+    def update_mask(self, mask):
+        mask = (mask.astype(bool) & (1 - np.eye(self.in_dim)).astype(bool)).astype(int)
+        self.layers[0].mask = torch.tensor(mask).to(self.device)
+
     @torch.no_grad()
     def reset_parameters(self):
         for layer in self.layers:
@@ -569,7 +573,7 @@ class PowerIterationGradient(nn.Module):
 
     def compute_gradient(self, adj_mtx):
         """Gradient eigenvalue"""
-        A = adj_mtx#**2
+        A = adj_mtx  # **2
         # fixed penalty
         self.iterate(A, 5)
         # self.init_eigenvect(adj_mtx)

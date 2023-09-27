@@ -67,6 +67,7 @@ class SDCI(BaseModel):
         val_dataset: Optional[Dataset] = None,
         val_fraction: float = 0.2,
         log_wandb: bool = False,
+        finetune: bool = False,
         wandb_project: str = "SDCI",
         wandb_name: str = "SDCI",
         wandb_config_dict: Optional[dict] = None,
@@ -205,6 +206,31 @@ class SDCI(BaseModel):
             device=device,
             **train_kwargs,
         )
+
+        # Save unthresholded matrix because thresholding is destructive.
+        self._adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
+        if self.use_gumbel:
+            self.fix_gumbel_threshold()
+        else:
+            self._final_mask = (self._adj_matrix > self.threshold).astype(int)
+            self._model.update_mask(self._final_mask)
+
+        if finetune:
+            print("Beginning finetune.")
+            self._model = _train(
+                self._model,
+                dataloader,
+                optimizer,
+                {**self._stage2_kwargs, "gamma_increment": 0},
+                val_dataloader=val_dataloader,
+                log_wandb=log_wandb,
+                print_graph=verbose,
+                B_true=B_true,
+                start_wandb_epoch=next_epoch,
+                device=device,
+                **train_kwargs,
+            )
+
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
@@ -238,19 +264,18 @@ class SDCI(BaseModel):
 
         adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
         func = lambda threshold: is_acyclic(adj_matrix > threshold)
-        self.threshold = bisect(func, 0, 1)
-        return self.threshold
+        min_dag_threshold = bisect(func, 0, 1)
+        return min_dag_threshold
 
     def get_adjacency_matrix(self, threshold: Union[bool, float] = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
-        adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
         if threshold == False:
-            return adj_matrix
+            return self._adj_matrix
 
         if type(threshold) == bool:
             threshold = self.threshold
-        return (adj_matrix > threshold).astype(int)
+        return (self._adj_matrix > threshold).astype(int)
 
 
 def _train(
@@ -265,7 +290,7 @@ def _train(
     start_wandb_epoch=0,
     device=None,
     return_next_epoch=False,
-    n_epochs_check_validation=20,
+    n_epochs_check_validation=10,
     early_stopping=True,
     early_stopping_patience=10,
 ):
@@ -290,6 +315,9 @@ def _train(
     freeze_gamma_threshold = config.get("freeze_gamma_threshold", None)
     n_epochs_check = config["n_epochs_check"]
 
+    if freeze_gamma_at_dag:
+        assert freeze_gamma_threshold < threshold
+
     is_prescreen = model.dag_penalty_flavor == "none"
 
     n_observations = dataloader.batch_size * len(dataloader)
@@ -302,9 +330,11 @@ def _train(
     #######################
     # Begin training loop #
     #######################
+    gamma_idx = 0
     for epoch in range(n_epochs):
         if gamma_cap is None:
-            gamma = gammas[epoch]
+            gamma = gammas[gamma_idx]
+            gamma_idx += 1
         else:
             gamma = gamma_cap
 
@@ -337,18 +367,6 @@ def _train(
 
         if epoch % n_epochs_check == 0:
             B_pred = model.get_adjacency_matrix().cpu().detach().numpy()
-
-            if (
-                epoch > max(0.05 * n_epochs, 10)
-                and freeze_gamma_at_dag
-                and gamma_cap is None
-            ):
-                # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
-                is_dag = nx.is_directed_acyclic_graph(
-                    nx.DiGraph(B_pred > freeze_gamma_threshold)
-                )
-                if is_dag:
-                    gamma_cap = gamma
 
             epoch_loss /= len(dataloader)
             if B_true is not None:
@@ -390,6 +408,25 @@ def _train(
         # Begin validation step #
         #########################
         if epoch % n_epochs_check_validation == 0 and val_dataloader is not None:
+            B_pred = model.get_adjacency_matrix().cpu().detach().numpy()
+
+            # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
+            if epoch > 1 and freeze_gamma_at_dag and gamma_cap is None:
+                is_dag_freeze = nx.is_directed_acyclic_graph(
+                    nx.DiGraph(B_pred > freeze_gamma_threshold)
+                )
+                if is_dag_freeze:
+                    # If we hit a DAG, freeze the gamma value
+                    gamma_cap = gamma
+            elif freeze_gamma_at_dag and gamma_cap is not None:
+                is_dag_thresh = nx.is_directed_acyclic_graph(
+                    nx.DiGraph(B_pred > threshold)
+                )
+                if not is_dag_thresh:
+                    # If we have frozen the gamma value but the graph is not a DAG, unfreeze it
+                    gamma_cap = None
+                    early_stopping_patience_counter = 0
+
             val_loss = 0.0
             model.eval()
             for batch in val_dataloader:
@@ -412,6 +449,7 @@ def _train(
                     }
                 )
 
+            # Early stopping patience should only increase when gamma is frozen (the graph is still a DAG at threshold)
             if early_stopping and (not freeze_gamma_at_dag or gamma_cap is not None):
                 if val_loss < best_val_loss:
                     best_model = copy.deepcopy(model)
