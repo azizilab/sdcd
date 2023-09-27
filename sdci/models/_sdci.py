@@ -293,7 +293,7 @@ def _train(
     return_next_epoch=False,
     n_epochs_check_validation=1,
     early_stopping=True,
-    early_stopping_patience=10,
+    early_stopping_patience=20,
 ):
     """Train the model. Assumes dataloader outputs batches alongside interventions."""
     # unpack config
