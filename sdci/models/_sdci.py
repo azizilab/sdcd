@@ -291,7 +291,7 @@ def _train(
     start_wandb_epoch=0,
     device=None,
     return_next_epoch=False,
-    n_epochs_check_validation=20,
+    n_epochs_check_validation=1,
     early_stopping=True,
     early_stopping_patience=10,
 ):
