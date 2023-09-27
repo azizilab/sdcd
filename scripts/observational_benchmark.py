@@ -127,24 +127,25 @@ def run_model(
 @click.command()
 @click.option("--n", default=10000, help="Per interventional subset")
 @click.option("--d", default=10, type=int, help="Number of dimensions")
-@click.option("--s", type=int, default=5, help="Number of edges per dimension")
+@click.option("--p", type=float, default=0.1, help="Expected edge density")
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--model", type=str, default="all", help="Which models to run")
 @click.option("--force", default=False, help="If results exist, redo anyways.")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def _run_full_pipeline(n, d, s, seed, model, force, save_mtxs):
-    dataset_name = f"observational_n{n}_d{d}_edges{s}_seed{seed}"
+def _run_full_pipeline(n, d, p, seed, model, force, save_mtxs):
+    dataset_name = f"observational_n{n}_d{d}_edges{p}_seed{seed}"
     save_dir = f"saved_mtxs/{dataset_name}"
     if save_mtxs:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
+    n_edges_per_d = int(p * d * d)
     X, B_true = generate_observational_dataset(
         n,
         d,
-        s,
+        n_edges_per_d,
         seed,
         normalize=True,
         save_dir=save_dir,

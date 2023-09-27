@@ -25,7 +25,7 @@ from .modules import AutoEncoderLayers
 _DEFAULT_STAGE1_KWARGS = {
     "learning_rate": 2e-3,
     "batch_size": 256,
-    "n_epochs": 20_000,
+    "n_epochs": 2000,
     "alpha": 1e-2,
     "beta": 2e-4,
     "gamma_increment": 0,
@@ -33,16 +33,16 @@ _DEFAULT_STAGE1_KWARGS = {
     "mask_threshold": 0.2,
 }
 _DEFAULT_STAGE2_KWARGS = {
-    "learning_rate": 2e-3,
+    "learning_rate": 1e-3,
     "batch_size": 256,
-    "n_epochs": 20_000,
-    "alpha": 2e-5,
-    "beta": 1e-4,
-    "gamma_increment": 0.015,
+    "n_epochs": 2000,
+    "alpha": 5e-4,
+    "beta": 5e-3,
+    "gamma_increment": 0.005,
     "gamma_schedule": "linear",
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.01,
-    "threshold": 0.05,
+    "threshold": 0.1,
     "n_epochs_check": 100,
     "dag_penalty_flavor": "power_iteration",
 }
@@ -312,7 +312,7 @@ def _train(
     start_wandb_epoch=0,
     device=None,
     return_next_epoch=False,
-    n_epochs_check_validation=10,
+    n_epochs_check_validation=20,
     early_stopping=True,
     early_stopping_patience=10,
 ):
