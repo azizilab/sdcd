@@ -412,11 +412,7 @@ def _train(
             B_pred = model.get_adjacency_matrix().cpu().detach().numpy()
 
             # Check dag if freeze_gamma_at_dag is True and beyond a warmup period of epochs to avoid seeing a trivial DAG.
-            if (
-                epoch > max(0.05 * n_epochs, 10)
-                and freeze_gamma_at_dag
-                and gamma_cap is None
-            ):
+            if epoch > 1 and freeze_gamma_at_dag and gamma_cap is None:
                 is_dag_freeze = nx.is_directed_acyclic_graph(
                     nx.DiGraph(B_pred > freeze_gamma_threshold)
                 )
