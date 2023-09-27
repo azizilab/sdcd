@@ -290,9 +290,9 @@ def _train(
     start_wandb_epoch=0,
     device=None,
     return_next_epoch=False,
-    n_epochs_check_validation=1,
+    n_epochs_check_validation=10,
     early_stopping=True,
-    early_stopping_patience=20,
+    early_stopping_patience=10,
 ):
     """Train the model. Assumes dataloader outputs batches alongside interventions."""
     # unpack config
