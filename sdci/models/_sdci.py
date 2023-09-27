@@ -216,6 +216,7 @@ class SDCI(BaseModel):
             self._model.update_mask(self._final_mask)
 
         if finetune:
+            print("Beginning finetune.")
             self._model = _train(
                 self._model,
                 dataloader,
