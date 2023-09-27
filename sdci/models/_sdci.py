@@ -248,7 +248,6 @@ class SDCI(BaseModel):
             self._model.layers[0].gumbel_adjacency.log_alpha.requires_grad = False
             self._model.layers[0].adjacency_mask.copy_(higher)
 
-    @staticmethod
     def compute_min_dag_threshold(self) -> float:
         def is_acyclic(adj_matrix):
             return nx.is_directed_acyclic_graph(nx.DiGraph(adj_matrix))
