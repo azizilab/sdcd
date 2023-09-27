@@ -1,6 +1,7 @@
 import copy
 import time
 from typing import Optional, Literal, Union
+import itertools
 
 import numpy as np
 import torch
@@ -212,7 +213,9 @@ class SDCI(BaseModel):
         if self.use_gumbel:
             self.fix_gumbel_threshold()
         else:
-            self._final_mask = (self._adj_matrix > self.threshold).astype(int)
+            self._final_mask = self.adjacency_dag_at_threshold(
+                self._adj_matrix, self.threshold
+            ).astype(int)
             self._model.update_mask(self._final_mask)
 
         if finetune:
@@ -266,6 +269,25 @@ class SDCI(BaseModel):
         func = lambda threshold: is_acyclic(adj_matrix > threshold)
         min_dag_threshold = bisect(func, 0, 1)
         return min_dag_threshold
+
+    @staticmethod
+    def adjacency_dag_at_threshold(adjacency, threshold=0.1):
+        """Threshold adjacency matrix at the threshold and removes edges that makes it cyclic."""
+        edges = [
+            (i, j, adjacency[i, j])
+            for i, j in itertools.product(range(adjacency.shape[0]), repeat=2)
+        ]
+        edges.sort(key=lambda x: -x[2])
+        g = nx.DiGraph()
+        g.add_nodes_from(range(adjacency.shape[0]))
+        for e in edges:
+            if e[2] < threshold:
+                break
+            if nx.has_path(g, e[1], e[0]):
+                continue
+            else:
+                g.add_edge(e[0], e[1])
+        return nx.to_numpy_array(g)
 
     def get_adjacency_matrix(self, threshold: Union[bool, float] = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
