@@ -34,15 +34,14 @@ MODEL_CLS_DCT = {
 def generate_observational_dataset(
     n,
     d,
-    n_edges_per_d,
+    n_edges,
     seed,
     dataset="ER",
     scale=None,
     normalize=False,
     save_dir=None,
 ):
-    assert n_edges_per_d < d
-    n_edges = n_edges_per_d * d
+    assert n_edges <= d * (d - 1)
 
     if save_dir is not None:
         X_path = os.path.join(save_dir, f"X.csv")
@@ -105,11 +104,15 @@ def run_model(
 
     wandb_config_dict["model"] = model_cls_name
     model = model_cls()
+    extra_kwargs = {}
+    if model_cls_name == "SDCI":
+        extra_kwargs["B_true"] = B_true
     model.train(
         dataset,
         log_wandb=True,
         wandb_project=wandb_project,
         wandb_config_dict=wandb_config_dict,
+        **extra_kwargs,
     )
     metrics_dict = model.compute_metrics(B_true)
     metrics_dict["model"] = model_cls_name
@@ -135,17 +138,18 @@ def run_model(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
 def _run_full_pipeline(n, d, p, seed, model, force, save_mtxs):
-    dataset_name = f"observational_n{n}_d{d}_edges{p}_seed{seed}"
+    n_edges = int(p * d * (d - 1))
+    dataset_name = f"observational_n{n}_d{d}_edges{n_edges}_seed{seed}"
     save_dir = f"saved_mtxs/{dataset_name}"
     if save_mtxs:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-    n_edges_per_d = int(p * d * d)
+    print(f"Using {n_edges} edges for {d} variables")
     X, B_true = generate_observational_dataset(
         n,
         d,
-        n_edges_per_d,
+        n_edges,
         seed,
         normalize=True,
         save_dir=save_dir,

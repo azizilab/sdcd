@@ -42,7 +42,7 @@ _DEFAULT_STAGE2_KWARGS = {
     "gamma_schedule": "linear",
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.01,
-    "threshold": 0.1,
+    "threshold": 0.05,
     "n_epochs_check": 100,
     "dag_penalty_flavor": "power_iteration",
 }

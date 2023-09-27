@@ -1,21 +1,27 @@
 #!/bin/bash
 
 # Define an array of values for d
-declare -a d_vals=(20 50 100 200)
+declare -a d_vals=(10 25 50 100)
+
+# Define an array of values for edge density
+declare -a p_vals=(.05 .1)
 
 # Define an array of values for seed
-declare -a seed_vals=(0 1 2 3 4)
+declare -a seed_vals=(0 1 2)
 
 # Loop through each combination of d and seed values
 for d in "${d_vals[@]}"
 do
-    for seed in "${seed_vals[@]}"
+    for p in "${p_vals[@]}"
     do
-        # Run the Python script with the current values of d and seed
-        python3 scripts/observational_benchmark.py --n 10000 --d $d --s 5 --seed $seed --model all
+        for seed in "${seed_vals[@]}"
+        do
+            # Run the Python script with the current values of d and seed
+            python3 scripts/observational_benchmark.py --n 10000 --d $d --p $p --seed $seed --model SDCI
 
-        # Add a newline for separation between iterations
-        echo ""
+            # Add a newline for separation between iterations
+            echo ""
+        done
     done
 done
 
