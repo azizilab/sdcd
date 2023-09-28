@@ -19,13 +19,9 @@ def gumbel_sigmoid(log_alpha, bs, tau=1, hard=True):
 
 def gumbel_softmax(log_alpha, bs, tau=1, hard=True):
     shape = tuple([bs] + list(log_alpha.size()))
-    gumbels = (
-        -torch.empty(
-            shape, memory_format=torch.legacy_contiguous_format, device=log_alpha.device
-        )
-        .exponential_()
-        .log()
-    )  # ~Gumbel(0,1)
+    gumbels = -(
+        torch.empty(shape, memory_format=torch.legacy_contiguous_format, device=log_alpha.device).exponential_() + 1e-20
+    ).log()  # ~Gumbel(0,1)
     gumbels = (log_alpha + gumbels) / tau  # ~Gumbel(logits,tau)
     y_soft = gumbels.softmax(-1)
 
