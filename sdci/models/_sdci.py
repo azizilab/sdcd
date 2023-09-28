@@ -300,7 +300,8 @@ class SDCI(BaseModel):
 
         if type(threshold) == bool:
             threshold = self.threshold
-        return (self._adj_matrix > threshold).astype(int)
+
+        return self.adjacency_dag_at_threshold(self._adj_matrix, threshold).astype(int)
 
     def compute_nll(self, dataset: Dataset) -> float:
         total_loss = 0.0
@@ -416,10 +417,26 @@ def _train(
 
             epoch_loss /= len(dataloader)
             if B_true is not None:
-                metrics_dict = compute_metrics((B_pred > threshold).astype(int), B_true)
+                adjacency = SDCI.adjacency_dag_at_threshold(B_pred, threshold)
+                metrics_dict = compute_metrics(adjacency.astype(int), B_true)
                 print(
                     f"Epoch {epoch}: loss={epoch_loss:.2f}, score={metrics_dict['score']}, shd={metrics_dict['shd']}, gamma={gamma:.2f}"
                 )
+                adjacency_half_threshold = SDCI.adjacency_dag_at_threshold(
+                    B_pred, threshold / 2
+                )
+                metrics_dict_half = compute_metrics(adjacency_half_threshold.astype(int), B_true)
+                metrics_dict_half = {k + "_half_th": v for k, v in metrics_dict_half.items()}
+                metrics_dict.update(metrics_dict_half)
+
+                adjacency_double_threshold = SDCI.adjacency_dag_at_threshold(
+                    B_pred, threshold * 2
+                )
+                metrics_dict_double = compute_metrics(adjacency_double_threshold.astype(int), B_true)
+                metrics_dict_double = {k + "_double_th": v for k, v in metrics_dict_double.items()}
+                metrics_dict.update(metrics_dict_double)
+
+
             else:
                 metrics_dict = {}
                 print(f"Epoch {epoch}: loss={epoch_loss:.2f}, gamma={gamma:.2f}")
