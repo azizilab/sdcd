@@ -8,6 +8,7 @@ import wandb
 from ..third_party.dagma import DagmaNonlinear, DagmaMLP
 
 from .base._base_model import BaseModel
+from ..utils import set_random_seed_all
 
 _DEFAULT_MODEL_KWARGS = dict(
     num_layers=2,
@@ -33,6 +34,7 @@ class DAGMA(BaseModel):
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
+        set_random_seed_all(0)
         assert len(dataset.tensors) == 3, "Dataset must be in regime format"
         assert not dataset.tensors[2].any(), "Dataset must be fully observational"
 

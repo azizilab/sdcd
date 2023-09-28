@@ -15,7 +15,7 @@ from ..utils import (
     move_modules_to_device,
     TorchStandardScaler,
     compute_metrics,
-    train_val_split,
+    train_val_split, set_random_seed_all,
 )
 
 from .base._base_model import BaseModel
@@ -86,6 +86,8 @@ class SDCI(BaseModel):
         verbose: bool = False,
         device: Optional[torch.device] = None,
     ):
+        set_random_seed_all(0)
+
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **(model_kwargs or {})}
