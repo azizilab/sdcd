@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define an array of values for d
-declare -a d_vals=(5 10 25 50 100)
+declare -a d_vals=(10 25 50 100)
 
 # Define an array of values for edge density
 declare -a p_vals=(.05 .1)
