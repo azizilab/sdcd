@@ -97,6 +97,5 @@ def notears_linear(
         alpha += rho * h
         if h <= h_tol or rho >= rho_max:
             break
-    W_est = _adj(w_est)
-    W_est[np.abs(W_est) < w_threshold] = 0
+    W_est = np.abs(_adj(w_est))
     return W_est
