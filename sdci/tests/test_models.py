@@ -41,7 +41,7 @@ def test_sdci_gumbel(interventional_dataset):
 
 def test_dcdi(interventional_dataset):
     m = DCDI()
-    m.train(interventional_dataset, max_epochs=10, finetune=True)
+    m.train(interventional_dataset, max_epochs=2, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 

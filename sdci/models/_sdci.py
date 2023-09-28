@@ -51,7 +51,7 @@ _DEFAULT_STAGE2_KWARGS = {
 class SDCI(BaseModel):
     def __init__(
         self,
-        model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
+        model_variance_flavor: Literal["unit", "nn", "parameter"] = "nn",
         standard_scale: bool = False,
         use_gumbel: bool = False,
     ):
@@ -61,6 +61,7 @@ class SDCI(BaseModel):
         self.use_gumbel = use_gumbel
         self._stage1_kwargs = None
         self._stage2_kwargs = None
+        self._trained = False
 
     def train(
         self,
@@ -237,6 +238,8 @@ class SDCI(BaseModel):
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
+        self._trained = True
+
     def fix_gumbel_threshold(self):
         assert (
             self.use_gumbel
@@ -298,6 +301,27 @@ class SDCI(BaseModel):
         if type(threshold) == bool:
             threshold = self.threshold
         return (self._adj_matrix > threshold).astype(int)
+
+    def compute_nll(self, dataset: Dataset) -> float:
+        total_loss = 0.0
+        dataloader = DataLoader(dataset, batch_size=256)
+        self._model.eval()
+        for batch in dataloader:
+            X_batch, mask_interventions_oh, _ = batch
+            if self._model.device:
+                device = self._model.device
+                X_batch = X_batch.to(device)
+                mask_interventions_oh = mask_interventions_oh.to(device)
+
+            loss = (
+                self._model.reconstruction_loss(
+                    X_batch,
+                    mask_interventions_oh=mask_interventions_oh,
+                )
+                * X_batch.shape[0]
+            )
+            total_loss += loss.item()
+        return total_loss / len(dataset)
 
 
 def _train(

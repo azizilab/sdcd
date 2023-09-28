@@ -7,7 +7,7 @@ import wandb
 from sdci.models import SDCI
 from sdci.utils import create_intervention_dataset
 
-from full_pipeline_main import generate_dataset
+from deprecated.full_pipeline_main import generate_dataset
 
 
 seed = 0
