@@ -34,7 +34,7 @@ _DEFAULT_STAGE1_KWARGS = {
 }
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 1e-3,
-    "batch_size": 256,
+    "batch_size": 512,
     "n_epochs": 2000,
     "alpha": 5e-4,
     "beta": 5e-3,
@@ -42,11 +42,15 @@ _DEFAULT_STAGE2_KWARGS = {
     "gamma_schedule": "linear",
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.01,
-    "threshold": 0.05,
+    "threshold": 0.1,
     "n_epochs_check": 100,
     "dag_penalty_flavor": "power_iteration",
 }
 
+_DEFAULT_MODEL_KWARGS = {
+    "num_layers": 1,
+    "dim_hidden": 10,
+}
 
 class SDCI(BaseModel):
     def __init__(
@@ -61,6 +65,7 @@ class SDCI(BaseModel):
         self.use_gumbel = use_gumbel
         self._stage1_kwargs = None
         self._stage2_kwargs = None
+        self._model_kwargs = None
         self._trained = False
 
     def train(
@@ -76,12 +81,14 @@ class SDCI(BaseModel):
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
+        model_kwargs: Optional[dict] = None,
         train_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
     ):
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
+        self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **(model_kwargs or {})}
 
         self.threshold = self._stage2_kwargs["threshold"]
 
@@ -125,7 +132,7 @@ class SDCI(BaseModel):
         # Stage 1: Pre-selection
         self._ps_model = AutoEncoderLayers(
             self.d,
-            [10],
+            [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
             nn.Sigmoid(),
             model_variance_flavor=self.model_variance_flavor,
             shared_layers=False,
@@ -178,7 +185,7 @@ class SDCI(BaseModel):
         print(dag_penalty_flavor)
         self._model = AutoEncoderLayers(
             self.d,
-            [10],
+            [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
             nn.Sigmoid(),
             model_variance_flavor=self.model_variance_flavor,
             shared_layers=False,
