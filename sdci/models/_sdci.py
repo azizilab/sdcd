@@ -263,25 +263,6 @@ class SDCI(BaseModel):
             self._model.layers[0].gumbel_adjacency.log_alpha.requires_grad = False
             self._model.layers[0].adjacency_mask.copy_(higher)
 
-    def compute_min_dag_threshold(self) -> float:
-        def is_acyclic(adj_matrix):
-            return nx.is_directed_acyclic_graph(nx.DiGraph(adj_matrix))
-
-        def bisect(func, a, b, tol=1e-5):
-            mid = (a + b) / 2.0
-            while (b - a) / 2.0 > tol:
-                if func(mid) == True:
-                    b = mid
-                else:
-                    a = mid
-                mid = (a + b) / 2.0
-            return mid
-
-        adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
-        func = lambda threshold: is_acyclic(adj_matrix > threshold)
-        min_dag_threshold = bisect(func, 0, 1)
-        return min_dag_threshold
-
     @staticmethod
     def adjacency_dag_at_threshold(adjacency, threshold=0.1):
         """Threshold adjacency matrix at the threshold and removes edges that makes it cyclic."""
