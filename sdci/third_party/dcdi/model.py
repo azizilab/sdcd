@@ -77,7 +77,11 @@ class MLPGaussianModel(pl.LightningModule):
         self.validation_step_outputs = []
 
     def forward(self, data):
-        return data
+        x, masks, regimes = data
+        log_likelihood = torch.sum(
+            self.module.log_likelihood(x) * masks, dim=0
+        ) / masks.size(0)
+        return -torch.mean(log_likelihood)
 
     def get_augmented_lagrangian(self, nll, constraint_violation, reg):
         # compute augmented langrangian
