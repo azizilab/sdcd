@@ -139,14 +139,18 @@ def run_model(
 @click.option("--n_per_intervention", default=500, help="Per interventional subset")
 @click.option("--d", default=10, type=int, help="Number of dimensions")
 @click.option("--p", type=float, default=0.1, help="Expected edge density")
+@click.option("--s", type=int, default=-1, help="Number of edges per dimension.  (Overrides p)")
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--model", type=str, default="all", help="Which models to run")
-@click.option("--force", default=False, help="If results exist, redo anyways.")
+@click.option("--force", default=True, help="If results exist, redo anyways.")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def _run_full_pipeline(n, n_per_intervention, d, p, seed, model, force, save_mtxs):
-    n_edges = int(p * d * (d - 1))
+def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, save_mtxs):
+    if s != -1:
+        n_edges = s * d
+    else:
+        n_edges = int(p * d * (d - 1))
     dataset_name = f"interventional_n{n}_d{d}_edges{n_edges}_seed{seed}"
     save_dir = f"saved_mtxs/{dataset_name}"
     if save_mtxs:
@@ -181,7 +185,7 @@ def _run_full_pipeline(n, n_per_intervention, d, p, seed, model, force, save_mtx
         results_df = pd.read_csv(results_save_path, index_col=0)
         results_df_rows = results_df.to_dict(orient="records")
 
-    intervention_fractions = [0.0, 0.25, 0.5, 0.75, 1.0]  # of remaining interventions
+    intervention_fractions = [0.25, 0.5, 0.75, 1.0]  # of remaining interventions
     for intervention_frac in intervention_fractions:
         X_train_dataset_subset, _ = train_val_split(
             X_train_dataset,
@@ -189,6 +193,14 @@ def _run_full_pipeline(n, n_per_intervention, d, p, seed, model, force, save_mtx
             val_fraction=1 - intervention_frac,
             seed=seed,
         )
+        wandb_config_dict = {
+            "n": n,
+            "d": d,
+            "p": p,
+            "s": s,
+            "seed": seed,
+            "intervention_frac": intervention_frac,
+        }
 
         for model_cls_name, model_cls in model_classes.items():
             metrics_dict = run_model(
@@ -197,7 +209,8 @@ def _run_full_pipeline(n, n_per_intervention, d, p, seed, model, force, save_mtx
                 X_test_dataset,
                 B_true,
                 model_kwargs={},
-                wandb_project=dataset_name,
+                wandb_project="interventional_benchmark",
+                wandb_config_dict=wandb_config_dict,
                 save_dir=save_dir if save_mtxs else None,
                 force=force,
             )
@@ -212,7 +225,7 @@ def _run_full_pipeline(n, n_per_intervention, d, p, seed, model, force, save_mtx
                 save_dir, f"intervention_frac{intervention_frac}"
             )
             if not os.path.exists(intervention_dir):
-                os.makedirs(intervention_dir)
+                os.makedirs(intervention_dir, exist_ok=True)
             results_df.to_csv(os.path.join(intervention_dir, f"{model_cls_name}.csv"))
 
 
