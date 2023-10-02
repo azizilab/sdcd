@@ -34,15 +34,14 @@ MODEL_CLS_DCT = {
 def generate_observational_dataset(
     n,
     d,
-    n_edges_per_d,
+    n_edges,
     seed,
     dataset="ER",
     scale=None,
     normalize=False,
     save_dir=None,
 ):
-    assert n_edges_per_d < d
-    n_edges = n_edges_per_d * d
+    assert n_edges <= d * (d - 1)
 
     if save_dir is not None:
         X_path = os.path.join(save_dir, f"X.csv")
@@ -105,11 +104,15 @@ def run_model(
 
     wandb_config_dict["model"] = model_cls_name
     model = model_cls()
+    extra_kwargs = {}
+    if model_cls_name == "SDCI":
+        extra_kwargs["B_true"] = B_true
     model.train(
         dataset,
         log_wandb=True,
         wandb_project=wandb_project,
         wandb_config_dict=wandb_config_dict,
+        **extra_kwargs,
     )
     metrics_dict = model.compute_metrics(B_true)
     metrics_dict["model"] = model_cls_name
@@ -127,24 +130,26 @@ def run_model(
 @click.command()
 @click.option("--n", default=10000, help="Per interventional subset")
 @click.option("--d", default=10, type=int, help="Number of dimensions")
-@click.option("--s", type=int, default=5, help="Number of edges per dimension")
+@click.option("--p", type=float, default=0.1, help="Expected edge density")
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--model", type=str, default="all", help="Which models to run")
 @click.option("--force", default=False, help="If results exist, redo anyways.")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def _run_full_pipeline(n, d, s, seed, model, force, save_mtxs):
-    dataset_name = f"observational_n{n}_d{d}_edges{s}_seed{seed}"
+def _run_full_pipeline(n, d, p, seed, model, force, save_mtxs):
+    n_edges = int(p * d * (d - 1))
+    dataset_name = f"observational_n{n}_d{d}_edges{n_edges}_seed{seed}"
     save_dir = f"saved_mtxs/{dataset_name}"
     if save_mtxs:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
+    print(f"Using {n_edges} edges for {d} variables")
     X, B_true = generate_observational_dataset(
         n,
         d,
-        s,
+        n_edges,
         seed,
         normalize=True,
         save_dir=save_dir,

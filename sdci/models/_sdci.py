@@ -1,6 +1,7 @@
 import copy
 import time
 from typing import Optional, Literal, Union
+import itertools
 
 import numpy as np
 import torch
@@ -24,7 +25,7 @@ from .modules import AutoEncoderLayers
 _DEFAULT_STAGE1_KWARGS = {
     "learning_rate": 2e-3,
     "batch_size": 256,
-    "n_epochs": 20_000,
+    "n_epochs": 2000,
     "alpha": 1e-2,
     "beta": 2e-4,
     "gamma_increment": 0,
@@ -32,12 +33,12 @@ _DEFAULT_STAGE1_KWARGS = {
     "mask_threshold": 0.2,
 }
 _DEFAULT_STAGE2_KWARGS = {
-    "learning_rate": 2e-3,
+    "learning_rate": 1e-3,
     "batch_size": 256,
-    "n_epochs": 20_000,
-    "alpha": 2e-5,
-    "beta": 1e-4,
-    "gamma_increment": 0.015,
+    "n_epochs": 2000,
+    "alpha": 5e-4,
+    "beta": 5e-3,
+    "gamma_increment": 0.005,
     "gamma_schedule": "linear",
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.01,
@@ -212,7 +213,9 @@ class SDCI(BaseModel):
         if self.use_gumbel:
             self.fix_gumbel_threshold()
         else:
-            self._final_mask = (self._adj_matrix > self.threshold).astype(int)
+            self._final_mask = self.adjacency_dag_at_threshold(
+                self._adj_matrix, self.threshold
+            ).astype(int)
             self._model.update_mask(self._final_mask)
 
         if finetune:
@@ -267,6 +270,25 @@ class SDCI(BaseModel):
         min_dag_threshold = bisect(func, 0, 1)
         return min_dag_threshold
 
+    @staticmethod
+    def adjacency_dag_at_threshold(adjacency, threshold=0.1):
+        """Threshold adjacency matrix at the threshold and removes edges that makes it cyclic."""
+        edges = [
+            (i, j, adjacency[i, j])
+            for i, j in itertools.product(range(adjacency.shape[0]), repeat=2)
+        ]
+        edges.sort(key=lambda x: -x[2])
+        g = nx.DiGraph()
+        g.add_nodes_from(range(adjacency.shape[0]))
+        for e in edges:
+            if e[2] < threshold:
+                break
+            if nx.has_path(g, e[1], e[0]):
+                continue
+            else:
+                g.add_edge(e[0], e[1])
+        return nx.to_numpy_array(g)
+
     def get_adjacency_matrix(self, threshold: Union[bool, float] = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
@@ -290,7 +312,7 @@ def _train(
     start_wandb_epoch=0,
     device=None,
     return_next_epoch=False,
-    n_epochs_check_validation=10,
+    n_epochs_check_validation=20,
     early_stopping=True,
     early_stopping_patience=10,
 ):
