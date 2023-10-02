@@ -50,7 +50,6 @@ class NOTEARS(BaseModel):
             data,
             lambda1=self._model_kwargs["lambda1"],
             loss_type=self._model_kwargs["loss_type"],
-            w_threshold=np.inf,
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")

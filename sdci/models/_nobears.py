@@ -10,7 +10,7 @@ from ..third_party.nobears import NoBearsTF, W_reg_init
 
 from .base._base_model import BaseModel
 
-_DEFAULT_MODEL_KWARGS = dict(w_threshold=0.3)
+_DEFAULT_MODEL_KWARGS = dict(w_threshold=0.05)
 
 
 class NOBEARS(BaseModel):
@@ -57,7 +57,7 @@ class NOBEARS(BaseModel):
 
         self._model.model_train(sess)
 
-        self._adj_matrix = sess.run(self._model.graph_nodes["weight_ema"])
+        self._adj_matrix = np.abs(sess.run(self._model.graph_nodes["weight_ema"]))
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
