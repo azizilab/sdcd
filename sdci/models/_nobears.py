@@ -11,6 +11,7 @@ from ..third_party.nobears import NoBearsTF, W_reg_init
 from .base._base_model import BaseModel
 from ..utils import compute_min_dag_threshold
 
+
 _DEFAULT_MODEL_KWARGS = dict()  # dict(w_threshold=0.05)
 
 
