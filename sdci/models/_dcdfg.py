@@ -33,6 +33,7 @@ class DCDFG(BaseModel):
         super().__init__()
         self._adj_matrix = None
         self._adj_matrix_thresh = None
+        self._trained = False
 
     def train(
         self,
@@ -66,9 +67,12 @@ class DCDFG(BaseModel):
         start = time.time()
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
         init_kwargs = self._model_kwargs.copy()
+        num_modules = init_kwargs.pop("num_modules")
+        num_modules = min(num_modules, d)
         max_epochs = init_kwargs.pop("max_epochs")
         self._model = MLPModuleGaussianModel(
             d,
+            num_modules=num_modules,
             **init_kwargs,
         )
 
@@ -115,13 +119,13 @@ class DCDFG(BaseModel):
             early_stop_2_callback = EarlyStopping(
                 monitor="Val/nll", min_delta=1e-6, patience=5, verbose=True, mode="min"
             )
-            trainer_fine = pl.Trainer(
+            self.trainer_fine = pl.Trainer(
                 max_epochs=max_epochs,
                 logger=WandbLogger(project=wandb_project, reinit=True),
                 val_check_interval=1.0,
                 callbacks=[early_stop_2_callback, CustomProgressBar()],
             )
-            trainer_fine.fit(
+            self.trainer_fine.fit(
                 self._model,
                 DataLoader(train_dataset, batch_size=128),
                 DataLoader(val_dataset, num_workers=2, batch_size=256),
@@ -134,7 +138,17 @@ class DCDFG(BaseModel):
             self._model.module.weight_mask.detach().cpu().numpy() > 0, dtype=int
         )
 
+        self._trained = True
+
     def get_adjacency_matrix(self, threshold: bool = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
 
         return self._adj_matrix_thresh if threshold else self._adj_matrix
+
+    def compute_nll(self, dataset: Dataset) -> float:
+        assert self._trained
+        pred = self.trainer_fine.predict(
+            ckpt_path="best",
+            dataloaders=DataLoader(dataset, num_workers=8, batch_size=256),
+        )
+        return np.mean([x.item() for x in pred])

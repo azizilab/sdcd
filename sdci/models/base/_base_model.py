@@ -13,6 +13,7 @@ class BaseModel:
     def __init__(self):
         self._model = None
         self._model_kwargs = None
+        self._trained = False
 
     @abstractmethod
     def train(
@@ -33,3 +34,6 @@ class BaseModel:
         return compute_metrics(
             self.get_adjacency_matrix(threshold=True), ground_truth_adjacency
         )
+
+    def compute_nll(self, dataset: Dataset) -> float:
+        raise NotImplementedError
