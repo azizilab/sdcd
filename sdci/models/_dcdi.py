@@ -95,8 +95,8 @@ class DCDI(BaseModel):
         )
         trainer.fit(
             self._model,
-            DataLoader(train_dataset, batch_size=128, num_workers=4),
-            DataLoader(val_dataset, num_workers=8, batch_size=256),
+            DataLoader(train_dataset, batch_size=128),
+            DataLoader(val_dataset, batch_size=256),
         )
 
         # freeze and prune adjacency
@@ -126,7 +126,7 @@ class DCDI(BaseModel):
             self.trainer_fine.fit(
                 self._model,
                 DataLoader(train_dataset, batch_size=128),
-                DataLoader(val_dataset, num_workers=2, batch_size=256),
+                DataLoader(val_dataset, batch_size=256),
             )
 
         self._train_runtime_in_sec = time.time() - start
@@ -150,6 +150,6 @@ class DCDI(BaseModel):
         assert self._trained
         pred = self.trainer_fine.predict(
             ckpt_path="best",
-            dataloaders=DataLoader(dataset, num_workers=8, batch_size=256),
+            dataloaders=DataLoader(dataset, batch_size=256),
         )
         return np.mean([x.item() for x in pred])
