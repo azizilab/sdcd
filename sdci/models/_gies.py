@@ -5,6 +5,7 @@ import numpy as np
 from torch.utils.data import Dataset
 import wandb
 import gies
+gies.np.bool = bool # bug in gies with newer np version
 
 from .base._base_model import BaseModel
 
