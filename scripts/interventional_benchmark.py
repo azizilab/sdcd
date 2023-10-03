@@ -18,7 +18,7 @@ from sdci.utils import (
     train_val_split,
 )
 from sdci.simulated_data import random_model_gaussian_global_variance
-from sdci.models import SDCI, DCDFG, DCDI
+from sdci.models import SDCI, DCDFG, DCDI, GIES
 
 MODEL_CLS_DCT = {
     model_cls.__name__: model_cls
@@ -26,6 +26,7 @@ MODEL_CLS_DCT = {
         SDCI,
         DCDFG,
         DCDI,
+        GIES,
     ]
 }
 
