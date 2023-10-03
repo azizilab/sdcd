@@ -15,7 +15,7 @@ from sdci.utils import (
     create_intervention_dataset,
 )
 from sdci.simulated_data import random_model_gaussian_global_variance
-from sdci.models import SDCI, DCDI, DCDFG, DAGMA, NOBEARS, NOTEARS, Sortnregress
+from sdci.models import SDCI, DCDI, DCDFG, GIES, DAGMA, NOBEARS, NOTEARS, Sortnregress
 
 MODEL_CLS_DCT = {
     model_cls.__name__: model_cls
@@ -27,6 +27,7 @@ MODEL_CLS_DCT = {
         Sortnregress,
         DCDFG,
         DCDI,
+        GIES,
     ]
 }
 
