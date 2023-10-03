@@ -7,9 +7,7 @@ import scipy.optimize as sopt
 from scipy.special import expit as sigmoid
 
 
-def notears_linear(
-    X, lambda1, loss_type, max_iter=100, h_tol=1e-8, rho_max=1e16, w_threshold=0.3
-):
+def notears_linear(X, lambda1, loss_type, max_iter=100, h_tol=1e-8, rho_max=1e16):
     """Solve min_W L(W; X) + lambda1 ‖W‖_1 s.t. h(W) = 0 using augmented Lagrangian.
 
     Args:
@@ -19,7 +17,6 @@ def notears_linear(
         max_iter (int): max num of dual ascent steps
         h_tol (float): exit if |h(w_est)| <= htol
         rho_max (float): exit if rho >= rho_max
-        w_threshold (float): drop edge if |weight| < threshold
 
     Returns:
         W_est (np.ndarray): [d, d] estimated DAG
@@ -97,6 +94,5 @@ def notears_linear(
         alpha += rho * h
         if h <= h_tol or rho >= rho_max:
             break
-    W_est = _adj(w_est)
-    W_est[np.abs(W_est) < w_threshold] = 0
+    W_est = np.abs(_adj(w_est))
     return W_est

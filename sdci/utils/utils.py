@@ -21,7 +21,7 @@ def set_random_seed_all(seed=0):
 
 def move_modules_to_device(module: nn.Module, device: Optional[torch.device]):
     """Moves modules to a given device."""
-    if hasattr(module, 'to'):
+    if hasattr(module, "to"):
         module.to(device)
 
     for submodule in module.children():
@@ -34,13 +34,14 @@ class TorchStandardScaler:
 
     From https://discuss.pytorch.org/t/pytorch-tensor-scaling/38576/8.
     """
+
     def fit(self, data):
         self.mean = data.mean(0, keepdim=True)
         self.std = data.std(0, unbiased=False, keepdim=True)
 
     def transform(self, data):
         data -= self.mean
-        data /= (self.std + 1e-7)
+        data /= self.std + 1e-7
         return data
 
     def fit_transform(self, data):
@@ -69,9 +70,7 @@ def compute_p_vals(X_df):
                 cand_int_subset_df.loc[:, target_gene_idx].to_numpy(),
             )
             edge_rows.append((candidate_parent_idx, target_gene_idx, pval))
-    edges_df = pd.DataFrame(
-        edge_rows, columns=["candidate_parent_idx", "target_gene_idx", "pval"]
-    )
+    edges_df = pd.DataFrame(edge_rows, columns=["candidate_parent_idx", "target_gene_idx", "pval"])
 
     # Compute BH corrected pvals
     edges_df = edges_df.sort_values("pval")
@@ -91,16 +90,16 @@ def ks_test_screen(X_df, use_sig=True, sig=0.10, n_parents=50, verbose=False):
     if use_sig:
         valid_edges_df = edges_df[edges_df.pval_adj < sig]
         if verbose:
-            print(
-                f"Fraction edges valid under significance level {sig}: {len(valid_edges_df) / len(edges_df):.2f}"
-            )
+            print(f"Fraction edges valid under significance level {sig}: {len(valid_edges_df) / len(edges_df):.2f}")
     else:
         G = X_df.shape[1] - 1
         if n_parents >= G:
             valid_edges_df = edges_df
         else:
             valid_edges_dfs = []
-            sorted_groups = [df.sort_values("pval_adj", ascending=True) for _, df in edges_df.groupby(["target_gene_idx"])]
+            sorted_groups = [
+                df.sort_values("pval_adj", ascending=True) for _, df in edges_df.groupby(["target_gene_idx"])
+            ]
             for g in sorted_groups:
                 valid_edges_dfs.append(g[:n_parents])
             valid_edges_df = pd.concat(valid_edges_dfs)
@@ -135,6 +134,25 @@ def get_leading_left_and_right_eigenvectors(A):
     return left_eigenvector, right_eigenvector
 
 
+def compute_min_dag_threshold(adjacency_matrix) -> float:
+    def is_acyclic(m):
+        return nx.is_directed_acyclic_graph(nx.DiGraph(m))
+
+    def bisect(func, a, b, tol=1e-5):
+        mid = (a + b) / 2.0
+        while (b - a) / 2.0 > tol:
+            if func(mid) == True:
+                b = mid
+            else:
+                a = mid
+            mid = (a + b) / 2.0
+        return mid
+
+    func = lambda threshold: is_acyclic(adjacency_matrix > threshold)
+    min_dag_threshold = bisect(func, 0, 10)
+    return min_dag_threshold
+
+
 def print_graph_from_weights(d, B_pred, B_true, thresholds=_THRESHOLDS, max_parents=50, max_nodes=50):
     B_true_square = B_true @ B_true
     for i in range(min(d, max_nodes)):
@@ -159,12 +177,7 @@ def print_graph_from_weights(d, B_pred, B_true, thresholds=_THRESHOLDS, max_pare
             # and the next parent weight is less than the threshold
             for t in thresholds:
                 conditions = [
-                    (
-                        idx < d - 1
-                        and parents_weights[parents[idx]]
-                        > t
-                        > parents_weights[parents[idx + 1]]
-                    ),
+                    (idx < d - 1 and parents_weights[parents[idx]] > t > parents_weights[parents[idx + 1]]),
                     (idx == d - 1 and parents_weights[parents[idx]] > t),
                 ]
                 if any(conditions):

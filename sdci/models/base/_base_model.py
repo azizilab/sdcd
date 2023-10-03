@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from ...utils import (
-    compute_metrics,
+    compute_metrics, set_random_seed_all,
 )
 
 
@@ -13,6 +13,8 @@ class BaseModel:
     def __init__(self):
         self._model = None
         self._model_kwargs = None
+        self._trained = False
+        set_random_seed_all(0)
 
     @abstractmethod
     def train(
@@ -33,3 +35,6 @@ class BaseModel:
         return compute_metrics(
             self.get_adjacency_matrix(threshold=True), ground_truth_adjacency
         )
+
+    def compute_nll(self, dataset: Dataset) -> float:
+        raise NotImplementedError

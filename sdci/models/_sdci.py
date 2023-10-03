@@ -1,6 +1,7 @@
 import copy
 import time
 from typing import Optional, Literal, Union
+import itertools
 
 import numpy as np
 import torch
@@ -14,7 +15,7 @@ from ..utils import (
     move_modules_to_device,
     TorchStandardScaler,
     compute_metrics,
-    train_val_split,
+    train_val_split, set_random_seed_all,
 )
 
 from .base._base_model import BaseModel
@@ -24,7 +25,7 @@ from .modules import AutoEncoderLayers
 _DEFAULT_STAGE1_KWARGS = {
     "learning_rate": 2e-3,
     "batch_size": 256,
-    "n_epochs": 20_000,
+    "n_epochs": 2000,
     "alpha": 1e-2,
     "beta": 2e-4,
     "gamma_increment": 0,
@@ -32,25 +33,29 @@ _DEFAULT_STAGE1_KWARGS = {
     "mask_threshold": 0.2,
 }
 _DEFAULT_STAGE2_KWARGS = {
-    "learning_rate": 2e-3,
-    "batch_size": 256,
-    "n_epochs": 20_000,
-    "alpha": 2e-5,
-    "beta": 1e-4,
-    "gamma_increment": 0.015,
+    "learning_rate": 1e-3,
+    "batch_size": 512,
+    "n_epochs": 2000,
+    "alpha": 5e-4,
+    "beta": 5e-3,
+    "gamma_increment": 0.005,
     "gamma_schedule": "linear",
     "freeze_gamma_at_dag": True,
     "freeze_gamma_threshold": 0.01,
-    "threshold": 0.05,
+    "threshold": 0.1,
     "n_epochs_check": 100,
     "dag_penalty_flavor": "power_iteration",
 }
 
+_DEFAULT_MODEL_KWARGS = {
+    "num_layers": 1,
+    "dim_hidden": 10,
+}
 
 class SDCI(BaseModel):
     def __init__(
         self,
-        model_variance_flavor: Literal["unit", "nn", "parameter"] = "unit",
+        model_variance_flavor: Literal["unit", "nn", "parameter"] = "nn",
         standard_scale: bool = False,
         use_gumbel: bool = False,
     ):
@@ -60,6 +65,8 @@ class SDCI(BaseModel):
         self.use_gumbel = use_gumbel
         self._stage1_kwargs = None
         self._stage2_kwargs = None
+        self._model_kwargs = None
+        self._trained = False
 
     def train(
         self,
@@ -74,12 +81,16 @@ class SDCI(BaseModel):
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
         stage2_kwargs: Optional[dict] = None,
+        model_kwargs: Optional[dict] = None,
         train_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
     ):
+        set_random_seed_all(0)
+
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
+        self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **(model_kwargs or {})}
 
         self.threshold = self._stage2_kwargs["threshold"]
 
@@ -123,7 +134,7 @@ class SDCI(BaseModel):
         # Stage 1: Pre-selection
         self._ps_model = AutoEncoderLayers(
             self.d,
-            [10],
+            [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
             nn.Sigmoid(),
             model_variance_flavor=self.model_variance_flavor,
             shared_layers=False,
@@ -176,7 +187,7 @@ class SDCI(BaseModel):
         print(dag_penalty_flavor)
         self._model = AutoEncoderLayers(
             self.d,
-            [10],
+            [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
             nn.Sigmoid(),
             model_variance_flavor=self.model_variance_flavor,
             shared_layers=False,
@@ -212,7 +223,9 @@ class SDCI(BaseModel):
         if self.use_gumbel:
             self.fix_gumbel_threshold()
         else:
-            self._final_mask = (self._adj_matrix > self.threshold).astype(int)
+            self._final_mask = self.adjacency_dag_at_threshold(
+                self._adj_matrix, self.threshold
+            ).astype(int)
             self._model.update_mask(self._final_mask)
 
         if finetune:
@@ -234,6 +247,8 @@ class SDCI(BaseModel):
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
+        self._trained = True
+
     def fix_gumbel_threshold(self):
         assert (
             self.use_gumbel
@@ -248,24 +263,24 @@ class SDCI(BaseModel):
             self._model.layers[0].gumbel_adjacency.log_alpha.requires_grad = False
             self._model.layers[0].adjacency_mask.copy_(higher)
 
-    def compute_min_dag_threshold(self) -> float:
-        def is_acyclic(adj_matrix):
-            return nx.is_directed_acyclic_graph(nx.DiGraph(adj_matrix))
-
-        def bisect(func, a, b, tol=1e-5):
-            mid = (a + b) / 2.0
-            while (b - a) / 2.0 > tol:
-                if func(mid) == True:
-                    b = mid
-                else:
-                    a = mid
-                mid = (a + b) / 2.0
-            return mid
-
-        adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
-        func = lambda threshold: is_acyclic(adj_matrix > threshold)
-        min_dag_threshold = bisect(func, 0, 1)
-        return min_dag_threshold
+    @staticmethod
+    def adjacency_dag_at_threshold(adjacency, threshold=0.1):
+        """Threshold adjacency matrix at the threshold and removes edges that makes it cyclic."""
+        edges = [
+            (i, j, adjacency[i, j])
+            for i, j in itertools.product(range(adjacency.shape[0]), repeat=2)
+        ]
+        edges.sort(key=lambda x: -x[2])
+        g = nx.DiGraph()
+        g.add_nodes_from(range(adjacency.shape[0]))
+        for e in edges:
+            if e[2] < threshold:
+                break
+            if nx.has_path(g, e[1], e[0]):
+                continue
+            else:
+                g.add_edge(e[0], e[1])
+        return nx.to_numpy_array(g)
 
     def get_adjacency_matrix(self, threshold: Union[bool, float] = True) -> np.ndarray:
         assert self._model is not None, "Model has not been trained yet."
@@ -275,7 +290,29 @@ class SDCI(BaseModel):
 
         if type(threshold) == bool:
             threshold = self.threshold
-        return (self._adj_matrix > threshold).astype(int)
+
+        return self.adjacency_dag_at_threshold(self._adj_matrix, threshold).astype(int)
+
+    def compute_nll(self, dataset: Dataset) -> float:
+        total_loss = 0.0
+        dataloader = DataLoader(dataset, batch_size=256)
+        self._model.eval()
+        for batch in dataloader:
+            X_batch, mask_interventions_oh, _ = batch
+            if self._model.device:
+                device = self._model.device
+                X_batch = X_batch.to(device)
+                mask_interventions_oh = mask_interventions_oh.to(device)
+
+            loss = (
+                self._model.reconstruction_loss(
+                    X_batch,
+                    mask_interventions_oh=mask_interventions_oh,
+                )
+                * X_batch.shape[0]
+            )
+            total_loss += loss.item()
+        return total_loss / len(dataset)
 
 
 def _train(
@@ -290,7 +327,7 @@ def _train(
     start_wandb_epoch=0,
     device=None,
     return_next_epoch=False,
-    n_epochs_check_validation=10,
+    n_epochs_check_validation=20,
     early_stopping=True,
     early_stopping_patience=10,
 ):
@@ -370,10 +407,26 @@ def _train(
 
             epoch_loss /= len(dataloader)
             if B_true is not None:
-                metrics_dict = compute_metrics((B_pred > threshold).astype(int), B_true)
+                adjacency = SDCI.adjacency_dag_at_threshold(B_pred, threshold)
+                metrics_dict = compute_metrics(adjacency.astype(int), B_true)
                 print(
                     f"Epoch {epoch}: loss={epoch_loss:.2f}, score={metrics_dict['score']}, shd={metrics_dict['shd']}, gamma={gamma:.2f}"
                 )
+                adjacency_half_threshold = SDCI.adjacency_dag_at_threshold(
+                    B_pred, threshold / 2
+                )
+                metrics_dict_half = compute_metrics(adjacency_half_threshold.astype(int), B_true)
+                metrics_dict_half = {k + "_half_th": v for k, v in metrics_dict_half.items()}
+                metrics_dict.update(metrics_dict_half)
+
+                adjacency_double_threshold = SDCI.adjacency_dag_at_threshold(
+                    B_pred, threshold * 2
+                )
+                metrics_dict_double = compute_metrics(adjacency_double_threshold.astype(int), B_true)
+                metrics_dict_double = {k + "_double_th": v for k, v in metrics_dict_double.items()}
+                metrics_dict.update(metrics_dict_double)
+
+
             else:
                 metrics_dict = {}
                 print(f"Epoch {epoch}: loss={epoch_loss:.2f}, gamma={gamma:.2f}")

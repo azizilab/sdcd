@@ -74,8 +74,14 @@ class MLPGaussianModel(pl.LightningModule):
         self.internal_checkups = 0.0
         self.stationary_points = 0.0
 
+        self.validation_step_outputs = []
+
     def forward(self, data):
-        return data
+        x, masks, regimes = data
+        log_likelihood = torch.sum(
+            self.module.log_likelihood(x) * masks, dim=0
+        ) / masks.size(0)
+        return -torch.mean(log_likelihood)
 
     def get_augmented_lagrangian(self, nll, constraint_violation, reg):
         # compute augmented langrangian
@@ -112,15 +118,18 @@ class MLPGaussianModel(pl.LightningModule):
         x, masks, regimes = batch
         nll, constraint_violation, reg = self.module.losses(x, masks)
         aug_lagrangian = self.get_augmented_lagrangian(nll, constraint_violation, reg)
-        return {
+        outputs = {
             "aug_lagrangian": aug_lagrangian,
             "nll": nll,
             "constraint": constraint_violation,
             "reg": reg,
         }
+        self.validation_step_outputs.append(outputs)
+        return outputs
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
         agg = {}
+        outputs = self.validation_step_outputs
         for k in outputs[0]:
             agg[k] = torch.stack([dic[k] for dic in outputs]).mean().item()
         self.aug_lagrangians_val += [agg["aug_lagrangian"]]
@@ -137,6 +146,8 @@ class MLPGaussianModel(pl.LightningModule):
         self.log("Val/acyclic", float(self.acyclic))
         self.log("Val/constraint_violation", agg["constraint"])
         self.log("Val/reg_value", agg["reg"])
+
+        self.validation_step_outputs.clear()
 
     def configure_optimizers(self):
         return torch.optim.RMSprop(self.module.parameters(), lr=self.lr_init)

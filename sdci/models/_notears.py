@@ -8,11 +8,12 @@ import wandb
 from ..third_party.notears import notears_linear
 
 from .base._base_model import BaseModel
+from ..utils import compute_min_dag_threshold
 
 _DEFAULT_MODEL_KWARGS = dict(
     lambda1=0.1,
     loss_type="l2",
-    w_threshold=0.3,
+    # w_threshold=0.3,
 )
 
 
@@ -45,16 +46,16 @@ class NOTEARS(BaseModel):
         start = time.time()
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
         self._model = -1
-        w_threshold = self._model_kwargs["w_threshold"]
         self._adj_matrix = notears_linear(
             data,
             lambda1=self._model_kwargs["lambda1"],
             loss_type=self._model_kwargs["loss_type"],
-            w_threshold=np.inf,
         )
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
+        w_threshold = compute_min_dag_threshold(self._adj_matrix)
+        wandb.log({"w_threshold": w_threshold})
         self._adj_matrix_thresh = np.array(
             np.abs(self._adj_matrix) > w_threshold, dtype=int
         )

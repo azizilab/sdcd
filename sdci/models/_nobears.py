@@ -9,8 +9,10 @@ import wandb
 from ..third_party.nobears import NoBearsTF, W_reg_init
 
 from .base._base_model import BaseModel
+from ..utils import compute_min_dag_threshold
 
-_DEFAULT_MODEL_KWARGS = dict(w_threshold=0.3)
+
+_DEFAULT_MODEL_KWARGS = dict()  # dict(w_threshold=0.05)
 
 
 class NOBEARS(BaseModel):
@@ -41,7 +43,6 @@ class NOBEARS(BaseModel):
 
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
         init_kwargs = self._model_kwargs.copy()
-        w_threshold = init_kwargs.pop("w_threshold")
         start = time.time()
 
         self._W_init = W_reg_init(data).astype("float32")
@@ -57,10 +58,12 @@ class NOBEARS(BaseModel):
 
         self._model.model_train(sess)
 
-        self._adj_matrix = sess.run(self._model.graph_nodes["weight_ema"])
+        self._adj_matrix = np.abs(sess.run(self._model.graph_nodes["weight_ema"]))
         self._train_runtime_in_sec = time.time() - start
         print(f"Finished training in {self._train_runtime_in_sec} seconds.")
 
+        w_threshold = compute_min_dag_threshold(self._adj_matrix)
+        wandb.log({"w_threshold": w_threshold})
         self._adj_matrix_thresh = np.array(
             np.abs(self._adj_matrix) > w_threshold, dtype=int
         )
