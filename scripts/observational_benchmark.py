@@ -130,20 +130,24 @@ def run_model(
 @click.command()
 @click.option("--n", default=10000, help="Per interventional subset")
 @click.option("--d", default=10, type=int, help="Number of dimensions")
-@click.option("--p", type=float, default=0.1, help="Expected edge density")
+@click.option("--p", type=float, default=0.05, help="Expected edge density. (Ignored if s is specified)")
+@click.option("--s", type=int, default=-1, help="Number of edges per dimension.  (Overrides p)")
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--model", type=str, default="all", help="Which models to run")
-@click.option("--force", default=False, help="If results exist, redo anyways.")
+@click.option("--force", default=True, help="If results exist, redo anyways.")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def _run_full_pipeline(n, d, p, seed, model, force, save_mtxs):
-    n_edges = int(p * d * (d - 1))
+def _run_full_pipeline(n, d, p, s, seed, model, force, save_mtxs):
+    if s != -1:
+        n_edges = s * d
+    else:
+        n_edges = int(p * d * (d - 1))
     dataset_name = f"observational_n{n}_d{d}_edges{n_edges}_seed{seed}"
     save_dir = f"saved_mtxs/{dataset_name}"
     if save_mtxs:
         if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
+            os.makedirs(save_dir, exist_ok=True)
 
     print(f"Using {n_edges} edges for {d} variables")
     X, B_true = generate_observational_dataset(
@@ -166,17 +170,31 @@ def _run_full_pipeline(n, d, p, seed, model, force, save_mtxs):
         model_classes = MODEL_CLS_DCT
     else:
         model_classes = {model: MODEL_CLS_DCT[model]}
-
+    wandb_config_dict = {
+        "n": n,
+        "d": d,
+        "p": p,
+        "s": s,
+        "seed": seed,
+    }
     for model_cls_name, model_cls in model_classes.items():
+        # try:
+        set_random_seed_all(0)
         metrics_dict = run_model(
             model_cls,
             X_dataset,
             B_true,
             model_kwargs={},
-            wandb_project=dataset_name,
+            wandb_project="observational_benchmark_v2",
+            wandb_config_dict=wandb_config_dict,
             save_dir=save_dir if save_mtxs else None,
             force=force,
         )
+        # except Exception as e:
+        #     print(f"Failed to run {model_cls_name}")
+        #     print(e)
+        #     wandb.finish()
+        #     continue
         if metrics_dict is None:
             continue
 

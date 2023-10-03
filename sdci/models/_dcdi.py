@@ -16,6 +16,7 @@ from ..third_party.callback import (
 )
 
 from .base._base_model import BaseModel
+from ..utils import set_random_seed_all
 
 _DEFAULT_MODEL_KWARGS = dict(
     num_layers=2,
@@ -44,6 +45,7 @@ class DCDI(BaseModel):
         finetune: bool = False,
         **model_kwargs,
     ):
+        set_random_seed_all(0)
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}
             wandb.init(

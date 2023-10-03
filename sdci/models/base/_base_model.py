@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from ...utils import (
-    compute_metrics,
+    compute_metrics, set_random_seed_all,
 )
 
 
@@ -14,6 +14,7 @@ class BaseModel:
         self._model = None
         self._model_kwargs = None
         self._trained = False
+        set_random_seed_all(0)
 
     @abstractmethod
     def train(
