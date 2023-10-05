@@ -20,7 +20,7 @@ from ..utils import set_random_seed_all
 
 _DEFAULT_MODEL_KWARGS = dict(
     num_layers=2,
-    num_modules=20,
+    num_modules=10,
     hid_dim=16,
     lr_init=1e-3,
     reg_coeff=0.1,
@@ -47,13 +47,6 @@ class DCDFG(BaseModel):
         **model_kwargs,
     ):
         set_random_seed_all(0)
-        if log_wandb:
-            wandb_config_dict = wandb_config_dict or {}
-            wandb.init(
-                project=wandb_project,
-                name="DCDFG",
-                config=wandb_config_dict,
-            )
         train_dataset, val_dataset = random_split(
             dataset,
             [
@@ -66,12 +59,24 @@ class DCDFG(BaseModel):
         assert len(sample_batch) == 3, "Dataset should contain (X, masks, regimes)"
         d = sample_batch[0].shape[1]
 
-        start = time.time()
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **model_kwargs}
         init_kwargs = self._model_kwargs.copy()
         num_modules = init_kwargs.pop("num_modules")
         num_modules = min(num_modules, d)
         max_epochs = init_kwargs.pop("max_epochs")
+
+        if log_wandb:
+            wandb_config_dict = wandb_config_dict or {}
+            wandb.init(
+                project=wandb_project,
+                name="DCDFG",
+                config={
+                    "num_modules": num_modules,
+                    **wandb_config_dict
+                },
+            )
+
+        start = time.time()
         self._model = MLPModuleGaussianModel(
             d,
             num_modules=num_modules,
@@ -99,8 +104,8 @@ class DCDFG(BaseModel):
         )
         trainer.fit(
             self._model,
-            DataLoader(train_dataset, batch_size=128, num_workers=4),
-            DataLoader(val_dataset, num_workers=8, batch_size=256),
+            DataLoader(train_dataset, batch_size=128),
+            DataLoader(val_dataset, batch_size=256),
         )
 
         # freeze and prune adjacency
@@ -130,7 +135,7 @@ class DCDFG(BaseModel):
             self.trainer_fine.fit(
                 self._model,
                 DataLoader(train_dataset, batch_size=128),
-                DataLoader(val_dataset, num_workers=2, batch_size=256),
+                DataLoader(val_dataset, batch_size=256),
             )
 
         self._train_runtime_in_sec = time.time() - start
@@ -151,6 +156,6 @@ class DCDFG(BaseModel):
         assert self._trained
         pred = self.trainer_fine.predict(
             ckpt_path="best",
-            dataloaders=DataLoader(dataset, num_workers=8, batch_size=256),
+            dataloaders=DataLoader(dataset, batch_size=256),
         )
         return np.mean([x.item() for x in pred])
