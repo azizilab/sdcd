@@ -34,7 +34,7 @@ _DEFAULT_STAGE1_KWARGS = {
 }
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 1e-3,
-    "batch_size": 512,
+    "batch_size": 256,
     "n_epochs": 2000,
     "alpha": 5e-4,
     "beta": 5e-3,
