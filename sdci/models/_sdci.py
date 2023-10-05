@@ -53,6 +53,8 @@ _DEFAULT_MODEL_KWARGS = {
     "power_iteration_n_steps": 15,
 }
 
+NUM_WORKERS = 0
+
 class SDCI(BaseModel):
     def __init__(
         self,
@@ -86,6 +88,7 @@ class SDCI(BaseModel):
         train_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
+        skip_stage1: bool = False,
     ):
         set_random_seed_all(0)
 
@@ -108,9 +111,9 @@ class SDCI(BaseModel):
 
         if val_dataset is None:
             dataset, val_dataset = train_val_split(dataset, val_fraction=val_fraction)
-        val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
+        val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size, num_workers=NUM_WORKERS)
 
-        ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
+        ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True, num_workers=NUM_WORKERS)
         sample_batch = next(iter(ps_dataloader))
         assert len(sample_batch) == 3, "Dataset should contain (X, masks, regimes)"
         self.d = sample_batch[0].shape[1]
@@ -127,22 +130,25 @@ class SDCI(BaseModel):
                     "batch_size": batch_size,
                     "stage1_kwargs": self._stage1_kwargs,
                     "stage2_kwargs": self._stage2_kwargs,
+                    "model_kwargs": self._model_kwargs,
+                    "number_of_samples": len(dataset),
                     **wandb_config_dict,
                 },
             )
 
         start = time.time()
         # Stage 1: Pre-selection
-        self._ps_model = AutoEncoderLayers(
-            self.d,
-            [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
-            nn.Sigmoid(),
-            model_variance_flavor=self.model_variance_flavor,
-            shared_layers=False,
-            adjacency_p=2.0,
-            dag_penalty_flavor="none",
-            use_gumbel=self.use_gumbel,
-        )
+        if not skip_stage1:
+            self._ps_model = AutoEncoderLayers(
+                self.d,
+                [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
+                nn.Sigmoid(),
+                model_variance_flavor=self.model_variance_flavor,
+                shared_layers=False,
+                adjacency_p=2.0,
+                dag_penalty_flavor="none",
+                use_gumbel=self.use_gumbel,
+            )
         if device:
             move_modules_to_device(self._ps_model, device)
 
@@ -155,19 +161,22 @@ class SDCI(BaseModel):
             "threshold": self.threshold,
         }
         train_kwargs = train_kwargs or {}
-        self._ps_model, next_epoch = _train(
-            self._ps_model,
-            ps_dataloader,
-            ps_optimizer,
-            ps_kwargs,
-            val_dataloader=val_dataloader,
-            log_wandb=log_wandb,
-            print_graph=verbose,
-            B_true=B_true,
-            device=device,
-            return_next_epoch=True,
-            **train_kwargs,
-        )
+        if not skip_stage1:
+            self._ps_model, next_epoch = _train(
+                self._ps_model,
+                ps_dataloader,
+                ps_optimizer,
+                ps_kwargs,
+                val_dataloader=val_dataloader,
+                log_wandb=log_wandb,
+                print_graph=verbose,
+                B_true=B_true,
+                device=device,
+                return_next_epoch=True,
+                **train_kwargs,
+            )
+        else:
+            next_epoch = 0
 
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
@@ -175,13 +184,18 @@ class SDCI(BaseModel):
             self._ps_model.get_adjacency_matrix().cpu().detach().numpy()
             > mask_threshold
         ).astype(int)
-        if B_true is not None:
-            print(
-                f"Recall of mask: {(B_true.astype(bool) & self._mask.astype(bool)).sum() / B_true.sum()}"
-            )
+        fraction_edges_mask = self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])
         print(
-            f"Fraction of possible edges in mask: {self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])}"
+            f"Fraction of possible edges in mask: {fraction_edges_mask}"
         )
+        if B_true is not None:
+            recall_mask = (B_true.astype(bool) & self._mask.astype(bool)).sum() / B_true.sum()
+            print(
+                f"Recall of mask: {recall_mask}"
+            )
+        else:
+            recall_mask = -1
+        wandb.log({"fraction_edges_mask": fraction_edges_mask, "recall_mask": recall_mask})
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
@@ -196,6 +210,7 @@ class SDCI(BaseModel):
             dag_penalty_flavor=dag_penalty_flavor,
             mask=self._mask,
             use_gumbel=self.use_gumbel,
+            power_iteration_n_steps=self._model_kwargs["power_iteration_n_steps"],
         )
         if device:
             move_modules_to_device(self._model, device)
@@ -204,7 +219,7 @@ class SDCI(BaseModel):
             self._model.parameters(), lr=self._stage2_kwargs["learning_rate"]
         )
 
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_WORKERS)
         self._model = _train(
             self._model,
             dataloader,
