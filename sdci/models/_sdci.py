@@ -50,6 +50,7 @@ _DEFAULT_STAGE2_KWARGS = {
 _DEFAULT_MODEL_KWARGS = {
     "num_layers": 1,
     "dim_hidden": 10,
+    "power_iteration_n_steps": 15,
 }
 
 class SDCI(BaseModel):
