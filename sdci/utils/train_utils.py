@@ -220,16 +220,16 @@ class AnnDataset(Dataset):
         
         # self.mask: a binary mask that zeros out the perturbed genes
         # 	i.e: gives 0 to a perturbated gene, and 1 otherwise
-		# creating a map for the names of features (genes)
+	# creating a map for the names of features (genes)
         column_mapping = {str(c): i for i, c in enumerate(self.var_names)}
 
-		# defining a function to encode gene names
+	# defining a function to encode gene names
         def column_encoding(s):
             # s is a string of comma-separated gene names
             l = list(str(column_mapping[c]) if c in self.var_names else '' for c in s.split(','))
             return ','.join(l)
         
-		# Applying this function to encode gene names in the perturbation column
+	# Applying this function to encode gene names in the perturbation column
         combined_columns = self.obs[perturbation_colname].apply(column_encoding).reset_index(drop=True).astype(object)
 
         # Split comma-separated strings in each row and convert to a binary matrix
