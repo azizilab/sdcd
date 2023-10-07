@@ -46,20 +46,20 @@ def subset_interventions(
 
 # This function will be used to produce the mask (array) in create_intervention_dataset and in the AnnDataset class
 def string_to_binary(row, n_genes):
-            """
-            This function returns a numpy.array containing 0 for each perturbated gene, and 1 otherwise
-            Input:
-                row: the corresponding row in the Series
-            """
-            # n_genes is the total number of genes
-            if row == "":
-                return np.ones(n_genes, dtype=int)
-            else:
-                # convert string indices to int
-                indices = set(map(int, row.split(","))) 
-                return np.array(
-                    [0 if i in indices else 1 for i in range(n_genes)]
-                )
+    """
+    This function returns a numpy.array containing 0 for each perturbated gene, and 1 otherwise
+    Input:
+        row: the corresponding row in the Series
+    """
+    # n_genes is the total number of genes
+    if row == "":
+        return np.ones(n_genes, dtype=int)
+    else:
+        # convert string indices to int
+        indices = set(map(int, row.split(","))) 
+        return np.array(
+            [0 if i in indices else 1 for i in range(n_genes)]
+        )
 
 def create_intervention_dataset(
     X_df,
