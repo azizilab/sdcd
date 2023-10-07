@@ -179,7 +179,7 @@ def compute_metrics(B_pred_thresh, B_true):
     if B_true is not None:
         diff = B_true != B_pred_thresh
         score = diff.sum()
-        shd = score - ((((diff + diff.transpose()) == 0) & (diff != 0)).sum() / 2)
+        shd = score - (((diff == diff.transpose()) & (diff != 0)).sum() / 2)
         recall = (B_true.astype(bool) & B_pred_thresh.astype(bool)).sum() / np.clip(
             B_true.sum(), 1, None
         )

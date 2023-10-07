@@ -4,6 +4,7 @@ from ..models import (
     SDCI,
     DCDI,
     DCDFG,
+    GIES,
     DAGMA,
     NOBEARS,
     NOTEARS,
@@ -50,6 +51,12 @@ def test_dcdfg(interventional_dataset):
     m = DCDFG()
     m.train(interventional_dataset, num_modules=5, max_epochs=2, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
+    assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
+
+
+def test_gies(interventional_dataset):
+    m = GIES()
+    m.train(interventional_dataset)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 

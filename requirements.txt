@@ -9,6 +9,7 @@ wandb
 causaldag==0.1a163
 cdt==0.5.23
 conditional_independence==0.1a5
+gies
 networkx==2.6.3
 numba==0.57.0
 numpy==1.23
@@ -16,5 +17,6 @@ pandas==1.4.0
 pytorch_lightning==1.5.10
 scanpy==1.9.1
 setuptools==59.5.0
+tensorflow
 torch
 tqdm==4.62.3
