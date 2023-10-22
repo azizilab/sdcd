@@ -1,5 +1,7 @@
 import sys
 
+import torch
+
 sys.path.append("./")
 
 import os
@@ -31,6 +33,14 @@ MODEL_CLS_DCT = {
     ]
 }
 
+# ablation study and GPU
+MODEL_CLS_DCT["SDCI-GPU"] = SDCI
+MODEL_CLS_DCT["SDCI-no-s1"] = SDCI
+MODEL_CLS_DCT["SDCI-no-s1-2"] = SDCI
+MODEL_CLS_DCT["SDCI-warm"] = SDCI
+MODEL_CLS_DCT["SDCI-warm-nomask"] = SDCI
+
+
 
 def generate_observational_dataset(
     n,
@@ -51,6 +61,8 @@ def generate_observational_dataset(
             X = pd.read_csv(X_path, index_col=0)
             B_true = np.loadtxt(Btrue_path, delimiter=",").astype(np.int64)
             return X, B_true
+    else:
+        raise ValueError("should use save_dir")
 
     set_random_seed_all(seed)
     if dataset == "ER":
@@ -84,7 +96,7 @@ def generate_observational_dataset(
 
 
 def run_model(
-    model_cls,
+    model_cls_name,
     dataset,
     B_true,
     model_kwargs=None,
@@ -95,7 +107,7 @@ def run_model(
 ):
     model_kwargs = model_kwargs or {}
     wandb_config_dict = wandb_config_dict or {}
-    model_cls_name = model_cls.__name__
+    model_cls = MODEL_CLS_DCT[model_cls_name]
 
     if save_dir is not None:
         save_path = os.path.join(save_dir, f"{model_cls_name}.csv")
@@ -106,8 +118,45 @@ def run_model(
     wandb_config_dict["model"] = model_cls_name
     model = model_cls()
     extra_kwargs = {}
-    if model_cls_name == "SDCI":
+    # ablation study and GPU
+    if "SDCI" in model_cls_name:
         extra_kwargs["B_true"] = B_true
+        if model_cls_name == "SDCI-GPU":
+            # run SDCI on GPU (and fail if gpu is unavailable)
+            if not torch.cuda.is_available():
+                print("CUDA not available, aborting.")
+                return
+            else:
+                device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
+        extra_kwargs["device"] = device
+
+        if model_cls_name == "SDCI-no-s1":
+            # skip stage 1, stage 2 just has a mask for self-loops
+            extra_kwargs["skip_stage1"] = True
+
+        if model_cls_name == "SDCI-no-s1-2":
+            # skip stage 1, stage 2 just has a mask for self-loops
+            # but set alpha and beta of stage 2 like those from stage 1
+            extra_kwargs["skip_stage1"] = True
+            from sdci.models._sdci import _DEFAULT_STAGE1_KWARGS
+            extra_kwargs["stage2_kwargs"] = {
+                "alpha": _DEFAULT_STAGE1_KWARGS["alpha"],
+                "beta": _DEFAULT_STAGE1_KWARGS["beta"],
+            }
+
+        if model_cls_name == "SDCI-warm":
+            # warm start the input layer in stage 2 from stage 1 (maybe we should also warm start other layers?)
+            extra_kwargs["warm_start"] = True
+
+        if model_cls_name == "SDCI-warm-nomask":
+            # warm start the input layer in stage 2 from stage 1, but ignore the mask from stage 1
+            extra_kwargs["warm_start"] = True
+            extra_kwargs["skip_masking"] = True
+
+        extra_kwargs["wandb_name"] = model_cls_name
+
     model.train(
         dataset,
         log_wandb=True,
@@ -130,11 +179,11 @@ def run_model(
 
 @click.command()
 @click.option("--n", default=10000, help="Per interventional subset")
-@click.option("--d", default=10, type=int, help="Number of dimensions")
+@click.option("--d", default=100, type=int, help="Number of dimensions")
 @click.option("--p", type=float, default=0.05, help="Expected edge density. (Ignored if s is specified)")
-@click.option("--s", type=int, default=-1, help="Number of edges per dimension.  (Overrides p)")
+@click.option("--s", type=int, default=4, help="Number of edges per dimension.  (Overrides p)")
 @click.option("--seed", default=0, help="Random seed")
-@click.option("--model", type=str, default="all", help="Which models to run")
+@click.option("--model", type=str, default="SDCI", help="Which models to run")
 @click.option("--force", default=True, help="If results exist, redo anyways.")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
@@ -145,7 +194,7 @@ def _run_full_pipeline(n, d, p, s, seed, model, force, save_mtxs):
     else:
         n_edges = int(p * d * (d - 1))
     dataset_name = f"observational_n{n}_d{d}_edges{n_edges}_seed{seed}"
-    save_dir = f"saved_mtxs/{dataset_name}"
+    save_dir = f"paper_experiments/observational/{dataset_name}"
     if save_mtxs:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir, exist_ok=True)
@@ -182,11 +231,11 @@ def _run_full_pipeline(n, d, p, s, seed, model, force, save_mtxs):
         # try:
         set_random_seed_all(0)
         metrics_dict = run_model(
-            model_cls,
+            model_cls_name,
             X_dataset,
             B_true,
             model_kwargs={},
-            wandb_project="observational_benchmark_v2",
+            wandb_project="observational_benchmark_v3",
             wandb_config_dict=wandb_config_dict,
             save_dir=save_dir if save_mtxs else None,
             force=force,
@@ -205,5 +254,31 @@ def _run_full_pipeline(n, d, p, s, seed, model, force, save_mtxs):
         results_df.to_csv(f"saved_mtxs/{dataset_name}/{model_cls_name}.csv")
 
 
+def create_data(n, d, s, seed):
+    """Helper to just generate the data used on observational benchmark
+    To make sure all models are evaluated on the same data."""
+    n_edges = s * d
+    dataset_name = f"observational_n{n}_d{d}_edges{n_edges}_seed{seed}"
+    save_dir = f"paper_experiments/observational/{dataset_name}"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+
+    print(f"Using {n_edges} edges for {d} variables")
+    generate_observational_dataset(
+        n,
+        d,
+        n_edges,
+        seed,
+        normalize=True,
+        save_dir=save_dir,
+    )
+
 if __name__ == "__main__":
     _run_full_pipeline()
+    # ds = [10, 20, 30, 40, 50, 70, 100]
+    # seeds = [0, 1, 2]
+    # ss = [4]
+    # ns = [10000]
+    # for n, d, s, seed in itertools.product(ns, ds, ss, seeds):
+    #     print(f"Creating data n={n}, d={d}, s={s}, seed={seed}")
+    #     create_data(n, d, s, seed)

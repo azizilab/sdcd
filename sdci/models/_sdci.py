@@ -89,12 +89,17 @@ class SDCI(BaseModel):
         verbose: bool = False,
         device: Optional[torch.device] = None,
         skip_stage1: bool = False,
+        warm_start: bool = False,
+        skip_masking: bool = False,
     ):
         set_random_seed_all(0)
 
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **(model_kwargs or {})}
+        if skip_stage1:
+            self._stage1_kwargs["n_epochs"] = 0
+            self._stage1_kwargs["mask_threshold"] = -1.0
 
         self.threshold = self._stage2_kwargs["threshold"]
 
@@ -138,17 +143,16 @@ class SDCI(BaseModel):
 
         start = time.time()
         # Stage 1: Pre-selection
-        if not skip_stage1:
-            self._ps_model = AutoEncoderLayers(
-                self.d,
-                [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
-                nn.Sigmoid(),
-                model_variance_flavor=self.model_variance_flavor,
-                shared_layers=False,
-                adjacency_p=2.0,
-                dag_penalty_flavor="none",
-                use_gumbel=self.use_gumbel,
-            )
+        self._ps_model = AutoEncoderLayers(
+            self.d,
+            [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
+            nn.Sigmoid(),
+            model_variance_flavor=self.model_variance_flavor,
+            shared_layers=False,
+            adjacency_p=2.0,
+            dag_penalty_flavor="none",
+            use_gumbel=self.use_gumbel,
+        )
         if device:
             move_modules_to_device(self._ps_model, device)
 
@@ -161,29 +165,29 @@ class SDCI(BaseModel):
             "threshold": self.threshold,
         }
         train_kwargs = train_kwargs or {}
-        if not skip_stage1:
-            self._ps_model, next_epoch = _train(
-                self._ps_model,
-                ps_dataloader,
-                ps_optimizer,
-                ps_kwargs,
-                val_dataloader=val_dataloader,
-                log_wandb=log_wandb,
-                print_graph=verbose,
-                B_true=B_true,
-                device=device,
-                return_next_epoch=True,
-                **train_kwargs,
-            )
-        else:
-            next_epoch = 0
+        self._ps_model, next_epoch = _train(
+            self._ps_model,
+            ps_dataloader,
+            ps_optimizer,
+            ps_kwargs,
+            val_dataloader=val_dataloader,
+            log_wandb=log_wandb,
+            print_graph=verbose,
+            B_true=B_true,
+            device=device,
+            return_next_epoch=True,
+            **train_kwargs,
+        )
 
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
-        self._mask = (
-            self._ps_model.get_adjacency_matrix().cpu().detach().numpy()
-            > mask_threshold
-        ).astype(int)
+        if not skip_masking:
+            self._mask = (
+                self._ps_model.get_adjacency_matrix().cpu().detach().numpy()
+                > mask_threshold
+            ).astype(int) * (1 - np.eye(self.d, dtype=int))
+        else:
+            self._mask = (1 - np.eye(self.d, dtype=int))
         fraction_edges_mask = self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])
         print(
             f"Fraction of possible edges in mask: {fraction_edges_mask}"
@@ -212,6 +216,10 @@ class SDCI(BaseModel):
             use_gumbel=self.use_gumbel,
             power_iteration_n_steps=self._model_kwargs["power_iteration_n_steps"],
         )
+        if warm_start:
+            warm_start_tensor = self._ps_model.layers[0]._weight.data
+            self._model.layers[0]._weight.data = warm_start_tensor
+
         if device:
             move_modules_to_device(self._model, device)
 
@@ -384,6 +392,7 @@ def _train(
     # Begin training loop #
     #######################
     gamma_idx = 0
+    epoch = 0
     for epoch in range(n_epochs):
         if gamma_cap is None:
             gamma = gammas[gamma_idx]
