@@ -97,6 +97,7 @@ def run_model(
     wandb_config_dict=None,
     save_dir=None,
     force=False,
+    **extra_kwargs,
 ):
     model_kwargs = model_kwargs or {}
     wandb_config_dict = wandb_config_dict or {}
@@ -110,13 +111,12 @@ def run_model(
 
     wandb_config_dict["model"] = model_cls_name
     model = model_cls()
-    extra_kwargs = {}
     if model_cls_name == "SDCI":
         extra_kwargs["B_true"] = B_true
 
     model.train(
         dataset,
-        finetune=True,
+        finetune=False,
         log_wandb=True,
         wandb_project=wandb_project,
         wandb_config_dict=wandb_config_dict,
@@ -127,14 +127,14 @@ def run_model(
     metrics_dict["train_time"] = model._train_runtime_in_sec
 
     # Compute I-NLL
-    i_nll = model.compute_nll(test_dataset)
-    metrics_dict["I-NLL"] = i_nll
+    # i_nll = model.compute_nll(test_dataset)
+    # metrics_dict["I-NLL"] = i_nll
 
     wandb.log(metrics_dict)
     wandb.finish()
 
     B_pred = model.get_adjacency_matrix()
-    if save_path:
+    if save_dir is not None:
         np.savetxt(save_path, B_pred, delimiter=",")
     return metrics_dict
 
@@ -148,10 +148,13 @@ def run_model(
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--model", type=str, default="all", help="Which models to run")
 @click.option("--force", default=True, help="If results exist, redo anyways.")
+@click.option("--sweep_frac", default=False, help="Sweep frac of interventions")
+@click.option("--wandb_project_name", default="intervention", help="Wandb project name")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, save_mtxs):
+def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, sweep_frac,
+                       wandb_project_name, save_mtxs):
     if s != -1:
         n_edges = s * d
     else:
@@ -178,6 +181,7 @@ def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, save_
     X_train_dataset, X_test_dataset = train_val_split(
         X_dataset, flavor="I-NLL", val_fraction=0.1, seed=seed
     )
+    X_train_dataset = X_dataset
 
     if model == "all":
         model_classes = MODEL_CLS_DCT
@@ -190,7 +194,11 @@ def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, save_
         results_df = pd.read_csv(results_save_path, index_col=0)
         results_df_rows = results_df.to_dict(orient="records")
 
-    intervention_fractions = [0, 0.25, 0.5, 0.75, 1.0]  # of remaining interventions
+    if sweep_frac:
+        intervention_fractions = [0., 0.25, 0.5, 0.75, 1.0]
+    else:
+        intervention_fractions = [1.0]  # of remaining interventions
+
     for intervention_frac in intervention_fractions:
         X_train_dataset_subset, _ = train_val_split(
             X_train_dataset,
@@ -214,7 +222,7 @@ def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, save_
                 X_test_dataset,
                 B_true,
                 model_kwargs={},
-                wandb_project="interventional_benchmark",
+                wandb_project=wandb_project_name,
                 wandb_config_dict=wandb_config_dict,
                 save_dir=save_dir if save_mtxs else None,
                 force=force,
