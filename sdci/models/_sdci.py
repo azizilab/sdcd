@@ -15,7 +15,8 @@ from ..utils import (
     move_modules_to_device,
     TorchStandardScaler,
     compute_metrics,
-    train_val_split, set_random_seed_all,
+    train_val_split,
+    set_random_seed_all,
 )
 
 from .base._base_model import BaseModel
@@ -54,6 +55,7 @@ _DEFAULT_MODEL_KWARGS = {
 }
 
 NUM_WORKERS = 0
+
 
 class SDCI(BaseModel):
     def __init__(
@@ -116,9 +118,13 @@ class SDCI(BaseModel):
 
         if val_dataset is None:
             dataset, val_dataset = train_val_split(dataset, val_fraction=val_fraction)
-        val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size, num_workers=NUM_WORKERS)
+        val_dataloader = DataLoader(
+            val_dataset, batch_size=ps_batch_size, num_workers=NUM_WORKERS
+        )
 
-        ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True, num_workers=NUM_WORKERS)
+        ps_dataloader = DataLoader(
+            dataset, batch_size=ps_batch_size, shuffle=True, num_workers=NUM_WORKERS
+        )
         sample_batch = next(iter(ps_dataloader))
         assert len(sample_batch) == 3, "Dataset should contain (X, masks, regimes)"
         self.d = sample_batch[0].shape[1]
@@ -187,20 +193,22 @@ class SDCI(BaseModel):
                 > mask_threshold
             ).astype(int) * (1 - np.eye(self.d, dtype=int))
         else:
-            self._mask = (1 - np.eye(self.d, dtype=int))
-        fraction_edges_mask = self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])
-        print(
-            f"Fraction of possible edges in mask: {fraction_edges_mask}"
+            self._mask = 1 - np.eye(self.d, dtype=int)
+        fraction_edges_mask = self._mask.sum() / (
+            self._mask.shape[0] * self._mask.shape[1]
         )
+        print(f"Fraction of possible edges in mask: {fraction_edges_mask}")
         if B_true is not None:
-            recall_mask = (B_true.astype(bool) & self._mask.astype(bool)).sum() / B_true.sum()
-            print(
-                f"Recall of mask: {recall_mask}"
-            )
+            recall_mask = (
+                B_true.astype(bool) & self._mask.astype(bool)
+            ).sum() / B_true.sum()
+            print(f"Recall of mask: {recall_mask}")
         else:
             recall_mask = -1
         if log_wandb:
-            wandb.log({"fraction_edges_mask": fraction_edges_mask, "recall_mask": recall_mask})
+            wandb.log(
+                {"fraction_edges_mask": fraction_edges_mask, "recall_mask": recall_mask}
+            )
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
@@ -228,7 +236,9 @@ class SDCI(BaseModel):
             self._model.parameters(), lr=self._stage2_kwargs["learning_rate"]
         )
 
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_WORKERS)
+        dataloader = DataLoader(
+            dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_WORKERS
+        )
         self._model = _train(
             self._model,
             dataloader,
@@ -245,16 +255,17 @@ class SDCI(BaseModel):
 
         # Save unthresholded matrix because thresholding is destructive.
         self._adj_matrix = self._model.get_adjacency_matrix().cpu().detach().numpy()
-        if self.use_gumbel:
-            self.fix_gumbel_threshold()
-        else:
-            self._final_mask = self.adjacency_dag_at_threshold(
-                self._adj_matrix, self.threshold
-            ).astype(int)
-            # TODO: updating mask not needed if we don't finetune right?
-            self._model.update_mask(self._final_mask)
 
         if finetune:
+            print("Fixing adjacency matrix.")
+            if self.use_gumbel:
+                self.fix_gumbel_threshold()
+            else:
+                self._final_mask = self.adjacency_dag_at_threshold(
+                    self._adj_matrix, self.threshold
+                ).astype(int)
+                self._model.update_mask(self._final_mask)
+
             print("Beginning finetune.")
             self._model = _train(
                 self._model,
@@ -442,17 +453,24 @@ def _train(
                 adjacency_half_threshold = SDCI.adjacency_dag_at_threshold(
                     B_pred, threshold / 2
                 )
-                metrics_dict_half = compute_metrics(adjacency_half_threshold.astype(int), B_true)
-                metrics_dict_half = {k + "_half_th": v for k, v in metrics_dict_half.items()}
+                metrics_dict_half = compute_metrics(
+                    adjacency_half_threshold.astype(int), B_true
+                )
+                metrics_dict_half = {
+                    k + "_half_th": v for k, v in metrics_dict_half.items()
+                }
                 metrics_dict.update(metrics_dict_half)
 
                 adjacency_double_threshold = SDCI.adjacency_dag_at_threshold(
                     B_pred, threshold * 2
                 )
-                metrics_dict_double = compute_metrics(adjacency_double_threshold.astype(int), B_true)
-                metrics_dict_double = {k + "_double_th": v for k, v in metrics_dict_double.items()}
+                metrics_dict_double = compute_metrics(
+                    adjacency_double_threshold.astype(int), B_true
+                )
+                metrics_dict_double = {
+                    k + "_double_th": v for k, v in metrics_dict_double.items()
+                }
                 metrics_dict.update(metrics_dict_double)
-
 
             else:
                 metrics_dict = {}

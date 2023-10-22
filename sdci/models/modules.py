@@ -148,7 +148,6 @@ class DispatcherLayer(nn.Module):
         hidden_dim,
         adjacency_p=2.0,
         mask=None,
-        warmstart=False,
         use_gumbel=False,
     ):
         super().__init__()
@@ -165,20 +164,12 @@ class DispatcherLayer(nn.Module):
             )
             self.gumbel_adjacency = GumbelAdjacency(self.in_dim)
 
-        if mask is not None and not warmstart:
+        if mask is not None:
             self.register_buffer("mask", torch.tensor(mask).float())
         else:
-            # TODO: Why ignore the mask with warmstart?
             self.register_buffer("mask", torch.ones((in_dim, out_dim)))
 
-        if mask is not None and warmstart:
-            warmstart_tensor = 0.3 * torch.tensor(mask).unsqueeze(-1).repeat(
-                (1, 1, hidden_dim)
-            )
-            self._weight = nn.Parameter(warmstart_tensor)
-        else:
-            self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
-
+        self._weight = nn.Parameter(torch.zeros(in_dim, out_dim, hidden_dim))
         self.bias = nn.Parameter(torch.zeros(out_dim, hidden_dim))
         self.reset_parameters_bounded_eigenvalues()
 
@@ -243,7 +234,6 @@ class AutoEncoderLayers(nn.Module):
         shared_layers: bool = True,
         adjacency_p: float = 2.0,
         mask=None,
-        warmstart=False,
         dag_penalty_flavor: Literal["scc", "power_iteration", "logdet", "none"] = "scc",
         use_gumbel=False,
         power_iteration_n_steps=5,
@@ -281,7 +271,6 @@ class AutoEncoderLayers(nn.Module):
                 hidden_dims[0],
                 adjacency_p=self.adjacency_p,
                 mask=mask,
-                warmstart=warmstart,
                 use_gumbel=self.use_gumbel,
             )
         )
@@ -292,7 +281,9 @@ class AutoEncoderLayers(nn.Module):
             )
         elif dag_penalty_flavor == "power_iteration":
             self.power_grad = PowerIterationGradient(
-                self.get_adjacency_matrix(), self.in_dim, n_iter=power_iteration_n_steps,
+                self.get_adjacency_matrix(),
+                self.in_dim,
+                n_iter=power_iteration_n_steps,
             )
 
         self.identity = torch.eye(self.in_dim)

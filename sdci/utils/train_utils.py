@@ -105,14 +105,6 @@ def create_intervention_dataset(
     return TensorDataset(X, interventions)
 
 
-def create_intervention_dataloader(
-    X_df, batch_size, obs_label="obs", perturbation_colname="perturbation_label"
-):
-    # TODO: deprecate
-    dataset = create_intervention_dataset(X_df, obs_label, perturbation_colname)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-
-
 def train_val_split(
     dataset: Dataset,
     flavor: Literal["random", "I-NLL", "train"] = "random",
