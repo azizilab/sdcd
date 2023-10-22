@@ -168,6 +168,7 @@ class DispatcherLayer(nn.Module):
         if mask is not None and not warmstart:
             self.register_buffer("mask", torch.tensor(mask).float())
         else:
+            # TODO: Why ignore the mask with warmstart?
             self.register_buffer("mask", torch.ones((in_dim, out_dim)))
 
         if mask is not None and warmstart:
@@ -245,6 +246,7 @@ class AutoEncoderLayers(nn.Module):
         warmstart=False,
         dag_penalty_flavor: Literal["scc", "power_iteration", "logdet", "none"] = "scc",
         use_gumbel=False,
+        power_iteration_n_steps=5,
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -290,7 +292,7 @@ class AutoEncoderLayers(nn.Module):
             )
         elif dag_penalty_flavor == "power_iteration":
             self.power_grad = PowerIterationGradient(
-                self.get_adjacency_matrix(), self.in_dim
+                self.get_adjacency_matrix(), self.in_dim, n_iter=power_iteration_n_steps,
             )
 
         self.identity = torch.eye(self.in_dim)
@@ -422,8 +424,8 @@ class AutoEncoderLayers(nn.Module):
         elif self.dag_penalty_flavor in ("scc", "power_iteration"):
             dag_reg = self.dag_reg_power_grad()
         elif self.dag_penalty_flavor == "none":
-            dag_reg = torch.zeros(1)
-        dag_reg = dag_reg.to(self.device)
+            dag_reg = 0.0
+        # dag_reg = dag_reg.to(self.device)
 
         total_loss = nll + l1_reg + l2_reg + gamma * dag_reg
 
@@ -432,7 +434,7 @@ class AutoEncoderLayers(nn.Module):
                 "nll": nll.detach(),
                 "l1": l1_reg.detach(),
                 "l2": l2_reg.detach(),
-                "dag": dag_reg.detach(),
+                "dag": dag_reg.detach() if type(dag_reg) != float else torch.zeros(1),
             }
         else:
             return total_loss
@@ -537,9 +539,10 @@ class SCCPowerIteration(nn.Module):
 
 
 class PowerIterationGradient(nn.Module):
-    def __init__(self, init_adj_mtx, d):
+    def __init__(self, init_adj_mtx, d, n_iter=5):
         super().__init__()
         self.d = d
+        self.n_iter = n_iter
 
         self._dummy_param = nn.Parameter(
             torch.zeros(1), requires_grad=False
@@ -558,7 +561,7 @@ class PowerIterationGradient(nn.Module):
         self.u, self.v = torch.ones(size=(2, self.d), device=self.device)
         self.u = self.u / torch.linalg.vector_norm(self.u)
         self.v = self.v / torch.linalg.vector_norm(self.v)
-        self.iterate(adj_mtx, 5)
+        self.iterate(adj_mtx, self.n_iter)
 
     def iterate(self, adj_mtx, n=2):
         with torch.no_grad():
@@ -575,7 +578,7 @@ class PowerIterationGradient(nn.Module):
         """Gradient eigenvalue"""
         A = adj_mtx  # **2
         # fixed penalty
-        self.iterate(A, 5)
+        self.iterate(A, self.n_iter)
         # self.init_eigenvect(adj_mtx)
         grad = self.u[:, None] @ self.v[None] / (self.u.dot(self.v) + 1e-6)
         # grad += torch.eye(self.d)

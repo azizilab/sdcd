@@ -34,7 +34,7 @@ _DEFAULT_STAGE1_KWARGS = {
 }
 _DEFAULT_STAGE2_KWARGS = {
     "learning_rate": 1e-3,
-    "batch_size": 512,
+    "batch_size": 256,
     "n_epochs": 2000,
     "alpha": 5e-4,
     "beta": 5e-3,
@@ -50,7 +50,10 @@ _DEFAULT_STAGE2_KWARGS = {
 _DEFAULT_MODEL_KWARGS = {
     "num_layers": 1,
     "dim_hidden": 10,
+    "power_iteration_n_steps": 15,
 }
+
+NUM_WORKERS = 0
 
 class SDCI(BaseModel):
     def __init__(
@@ -85,12 +88,18 @@ class SDCI(BaseModel):
         train_kwargs: Optional[dict] = None,
         verbose: bool = False,
         device: Optional[torch.device] = None,
+        skip_stage1: bool = False,
+        warm_start: bool = False,
+        skip_masking: bool = False,
     ):
         set_random_seed_all(0)
 
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
         self._stage2_kwargs = {**_DEFAULT_STAGE2_KWARGS.copy(), **(stage2_kwargs or {})}
         self._model_kwargs = {**_DEFAULT_MODEL_KWARGS.copy(), **(model_kwargs or {})}
+        if skip_stage1:
+            self._stage1_kwargs["n_epochs"] = 0
+            self._stage1_kwargs["mask_threshold"] = -1.0
 
         self.threshold = self._stage2_kwargs["threshold"]
 
@@ -107,9 +116,9 @@ class SDCI(BaseModel):
 
         if val_dataset is None:
             dataset, val_dataset = train_val_split(dataset, val_fraction=val_fraction)
-        val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size)
+        val_dataloader = DataLoader(val_dataset, batch_size=ps_batch_size, num_workers=NUM_WORKERS)
 
-        ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True)
+        ps_dataloader = DataLoader(dataset, batch_size=ps_batch_size, shuffle=True, num_workers=NUM_WORKERS)
         sample_batch = next(iter(ps_dataloader))
         assert len(sample_batch) == 3, "Dataset should contain (X, masks, regimes)"
         self.d = sample_batch[0].shape[1]
@@ -126,6 +135,8 @@ class SDCI(BaseModel):
                     "batch_size": batch_size,
                     "stage1_kwargs": self._stage1_kwargs,
                     "stage2_kwargs": self._stage2_kwargs,
+                    "model_kwargs": self._model_kwargs,
+                    "number_of_samples": len(dataset),
                     **wandb_config_dict,
                 },
             )
@@ -170,17 +181,26 @@ class SDCI(BaseModel):
 
         # Create mask for main algo
         mask_threshold = self._stage1_kwargs["mask_threshold"]
-        self._mask = (
-            self._ps_model.get_adjacency_matrix().cpu().detach().numpy()
-            > mask_threshold
-        ).astype(int)
-        if B_true is not None:
-            print(
-                f"Recall of mask: {(B_true.astype(bool) & self._mask.astype(bool)).sum() / B_true.sum()}"
-            )
+        if not skip_masking:
+            self._mask = (
+                self._ps_model.get_adjacency_matrix().cpu().detach().numpy()
+                > mask_threshold
+            ).astype(int) * (1 - np.eye(self.d, dtype=int))
+        else:
+            self._mask = (1 - np.eye(self.d, dtype=int))
+        fraction_edges_mask = self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])
         print(
-            f"Fraction of possible edges in mask: {self._mask.sum() / (self._mask.shape[0] * self._mask.shape[1])}"
+            f"Fraction of possible edges in mask: {fraction_edges_mask}"
         )
+        if B_true is not None:
+            recall_mask = (B_true.astype(bool) & self._mask.astype(bool)).sum() / B_true.sum()
+            print(
+                f"Recall of mask: {recall_mask}"
+            )
+        else:
+            recall_mask = -1
+        if log_wandb:
+            wandb.log({"fraction_edges_mask": fraction_edges_mask, "recall_mask": recall_mask})
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
@@ -195,7 +215,12 @@ class SDCI(BaseModel):
             dag_penalty_flavor=dag_penalty_flavor,
             mask=self._mask,
             use_gumbel=self.use_gumbel,
+            power_iteration_n_steps=self._model_kwargs["power_iteration_n_steps"],
         )
+        if warm_start:
+            warm_start_tensor = self._ps_model.layers[0]._weight.data
+            self._model.layers[0]._weight.data = warm_start_tensor
+
         if device:
             move_modules_to_device(self._model, device)
 
@@ -203,7 +228,7 @@ class SDCI(BaseModel):
             self._model.parameters(), lr=self._stage2_kwargs["learning_rate"]
         )
 
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_WORKERS)
         self._model = _train(
             self._model,
             dataloader,
@@ -226,6 +251,7 @@ class SDCI(BaseModel):
             self._final_mask = self.adjacency_dag_at_threshold(
                 self._adj_matrix, self.threshold
             ).astype(int)
+            # TODO: updating mask not needed if we don't finetune right?
             self._model.update_mask(self._final_mask)
 
         if finetune:
@@ -368,6 +394,7 @@ def _train(
     # Begin training loop #
     #######################
     gamma_idx = 0
+    epoch = 0
     for epoch in range(n_epochs):
         if gamma_cap is None:
             gamma = gammas[gamma_idx]
