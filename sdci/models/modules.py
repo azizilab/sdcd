@@ -423,8 +423,8 @@ class AutoEncoderLayers(nn.Module):
         elif self.dag_penalty_flavor in ("scc", "power_iteration"):
             dag_reg = self.dag_reg_power_grad()
         elif self.dag_penalty_flavor == "none":
-            dag_reg = torch.zeros(1)
-        dag_reg = dag_reg.to(self.device)
+            dag_reg = 0.0
+        # dag_reg = dag_reg.to(self.device)
 
         total_loss = nll + l1_reg + l2_reg + gamma * dag_reg
 
@@ -433,7 +433,7 @@ class AutoEncoderLayers(nn.Module):
                 "nll": nll.detach(),
                 "l1": l1_reg.detach(),
                 "l2": l2_reg.detach(),
-                "dag": dag_reg.detach(),
+                "dag": dag_reg.detach() if type(dag_reg) != float else torch.zeros(1),
             }
         else:
             return total_loss
