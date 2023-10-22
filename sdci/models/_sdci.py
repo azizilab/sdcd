@@ -199,7 +199,8 @@ class SDCI(BaseModel):
             )
         else:
             recall_mask = -1
-        wandb.log({"fraction_edges_mask": fraction_edges_mask, "recall_mask": recall_mask})
+        if log_wandb:
+            wandb.log({"fraction_edges_mask": fraction_edges_mask, "recall_mask": recall_mask})
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
@@ -250,6 +251,7 @@ class SDCI(BaseModel):
             self._final_mask = self.adjacency_dag_at_threshold(
                 self._adj_matrix, self.threshold
             ).astype(int)
+            # TODO: updating mask not needed if we don't finetune right?
             self._model.update_mask(self._final_mask)
 
         if finetune:
