@@ -168,6 +168,7 @@ class DispatcherLayer(nn.Module):
         if mask is not None and not warmstart:
             self.register_buffer("mask", torch.tensor(mask).float())
         else:
+            # TODO: Why ignore the mask with warmstart?
             self.register_buffer("mask", torch.ones((in_dim, out_dim)))
 
         if mask is not None and warmstart:
