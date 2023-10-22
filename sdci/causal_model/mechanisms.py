@@ -27,6 +27,24 @@ class ConditionalDistribution(abc.ABC):
 Mechanism = Union[Distribution, ConditionalDistribution]
 
 
+class MarginalDistribution:
+    """A distribution that is not conditional on any other variable."""
+
+    def __init__(self, distribution: Distribution):
+        self.distribution = distribution
+
+    def compute_distribution_from_parents(self, parents_values) -> Distribution:
+        if len(parents_values) != 0:
+            raise ValueError("Marginal distribution should not have any parents")
+        return self.distribution
+
+    def get_parents(self) -> list[str]:
+        return []
+
+    def sample(self, sample_shape, parents_values):
+        return self.distribution.sample(sample_shape)
+
+
 class ParametricConditionalDistribution(ConditionalDistribution):
     """
     A conditional distribution of the form p(y|x) = response_distribution(conditional_parameters_func(x))

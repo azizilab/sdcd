@@ -1,10 +1,12 @@
-from ..causal_model import CausalModel, scale_mechanism
-from .graph import random_dag, chain_graph, random_diagonal_band_dag
-from .mechanisms import generate_gaussian_mlp_fixed_scale_mechanisms
+import torch
+
+from sdci.causal_model import CausalModel, scale_mechanism, MarginalDistribution
+from sdci.simulated_data.graph import random_dag, chain_graph, random_diagonal_band_dag
+from sdci.simulated_data.mechanisms import generate_gaussian_mlp_fixed_scale_mechanisms
 
 
 def random_model_gaussian_global_variance(
-    n_nodes, n_edges, knockdown=0.1, scale=1.0, dag_type="ER", **kwargs
+    n_nodes, n_edges, knockdown=0.1, hard=False, scale=1.0, scale_hard=0.1, dag_type="ER", **kwargs
 ):
     if dag_type == "ER":
         dag = random_dag(n_nodes, n_edges)
@@ -23,9 +25,13 @@ def random_model_gaussian_global_variance(
 
     for i in range(n_nodes):
         nodes = [i]
-        new_intervened_mechanisms = {
-            n: scale_mechanism(observational_mechanisms[n], knockdown) for n in nodes
-        }
+        if hard:
+            # ignore knockdown, and set the mechanism to a marginal distribution
+            new_intervened_mechanisms = {
+                n: MarginalDistribution(torch.distributions.Normal(0, scale_hard)) for n in nodes
+            }
+        else:
+            new_intervened_mechanisms = {n: scale_mechanism(observational_mechanisms[n], knockdown) for n in nodes}
         causal_model.set_intervention(i, new_intervened_mechanisms)
 
     return causal_model

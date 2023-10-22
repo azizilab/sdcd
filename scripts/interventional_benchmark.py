@@ -66,6 +66,7 @@ def generate_interventional_dataset(
         n_edges,
         dag_type=dataset,
         scale=scale,
+        hard=True,
         **kwargs,
     )
     B_true = true_causal_model.adjacency
@@ -155,7 +156,7 @@ def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, save_
         n_edges = s * d
     else:
         n_edges = int(p * d * (d - 1))
-    dataset_name = f"interventional_n{n}_d{d}_edges{n_edges}_seed{seed}"
+    dataset_name = f"interventional_hard_n{n}_d{d}_edges{n_edges}_seed{seed}"
     save_dir = f"saved_mtxs/{dataset_name}"
     if save_mtxs:
         if not os.path.exists(save_dir):
