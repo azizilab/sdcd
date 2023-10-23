@@ -550,8 +550,8 @@ class PowerIterationGradient(nn.Module):
 
     def init_eigenvect(self, adj_mtx):
         self.u, self.v = torch.ones(size=(2, self.d), device=self.device)
-        self.u = self.u / torch.linalg.vector_norm(self.u)
-        self.v = self.v / torch.linalg.vector_norm(self.v)
+        self.u = normalize(self.u)
+        self.v = normalize(self.v)
         self.iterate(adj_mtx, self.n_iter)
 
     def iterate(self, adj_mtx, n=2):
