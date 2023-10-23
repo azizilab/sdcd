@@ -1,11 +1,11 @@
-"""Example of running SDCI on synthetic data."""
+"""Example of running SDCD on synthetic data."""
 import sys
 
 sys.path.append("./")
 import wandb
 
-from sdci.models import SDCI
-from sdci.utils import create_intervention_dataset
+from sdcd.models import SDCD
+from sdcd.utils import create_intervention_dataset
 
 from deprecated.full_pipeline_main import generate_dataset
 
@@ -20,11 +20,11 @@ X_df, B_true, wandb_config_dict = generate_dataset(
 )
 print("Dataset generated")
 dataset = create_intervention_dataset(X_df, regime_format=True)
-model = SDCI()
+model = SDCD()
 model.train(
     dataset,
     log_wandb=True,
-    wandb_project="Test-SDCI",
+    wandb_project="Test-SDCD",
     wandb_config_dict=wandb_config_dict,
     stage1_kwargs={
         "n_epochs": 1000,

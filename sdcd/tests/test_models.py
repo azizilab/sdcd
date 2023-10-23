@@ -1,7 +1,7 @@
 import pytest
 
 from ..models import (
-    SDCI,
+    SDCD,
     DCDI,
     DCDFG,
     GIES,
@@ -24,15 +24,15 @@ def observational_dataset():
     return generate_test_dataset(n=10, d=5, use_interventions=False)
 
 
-def test_sdci(interventional_dataset):
-    m = SDCI()
+def test_sdcd(interventional_dataset):
+    m = SDCD()
     m.train(interventional_dataset, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)
 
 
-def test_sdci_gumbel(interventional_dataset):
-    m = SDCI(use_gumbel=True)
+def test_sdcd_gumbel(interventional_dataset):
+    m = SDCD(use_gumbel=True)
     m.train(interventional_dataset, finetune=True)
     assert m.get_adjacency_matrix(threshold=False).shape == (5, 5)
     assert m.get_adjacency_matrix(threshold=True).shape == (5, 5)

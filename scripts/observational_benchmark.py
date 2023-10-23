@@ -12,17 +12,17 @@ import pandas as pd
 import wandb
 import pprint
 
-from sdci.utils import (
+from sdcd.utils import (
     set_random_seed_all,
     create_intervention_dataset,
 )
-from sdci.simulated_data import random_model_gaussian_global_variance
-from sdci.models import SDCI, DCDI, DCDFG, GIES, DAGMA, NOBEARS, NOTEARS, Sortnregress
+from sdcd.simulated_data import random_model_gaussian_global_variance
+from sdcd.models import SDCD, DCDI, DCDFG, GIES, DAGMA, NOBEARS, NOTEARS, Sortnregress
 
 MODEL_CLS_DCT = {
     model_cls.__name__: model_cls
     for model_cls in [
-        SDCI,
+        SDCD,
         DAGMA,
         NOBEARS,
         NOTEARS,
@@ -34,12 +34,11 @@ MODEL_CLS_DCT = {
 }
 
 # ablation study and GPU
-MODEL_CLS_DCT["SDCI-GPU"] = SDCI
-MODEL_CLS_DCT["SDCI-no-s1"] = SDCI
-MODEL_CLS_DCT["SDCI-no-s1-2"] = SDCI
-MODEL_CLS_DCT["SDCI-warm"] = SDCI
-MODEL_CLS_DCT["SDCI-warm-nomask"] = SDCI
-
+MODEL_CLS_DCT["SDCD-GPU"] = SDCD
+MODEL_CLS_DCT["SDCD-no-s1"] = SDCD
+MODEL_CLS_DCT["SDCD-no-s1-2"] = SDCD
+MODEL_CLS_DCT["SDCD-warm"] = SDCD
+MODEL_CLS_DCT["SDCD-warm-nomask"] = SDCD
 
 
 def generate_observational_dataset(
@@ -119,10 +118,10 @@ def run_model(
     model = model_cls()
     extra_kwargs = {}
     # ablation study and GPU
-    if "SDCI" in model_cls_name:
+    if "SDCD" in model_cls_name:
         extra_kwargs["B_true"] = B_true
-        if model_cls_name == "SDCI-GPU":
-            # run SDCI on GPU (and fail if gpu is unavailable)
+        if model_cls_name == "SDCD-GPU":
+            # run SDCD on GPU (and fail if gpu is unavailable)
             if not torch.cuda.is_available():
                 print("CUDA not available, aborting.")
                 return
@@ -132,25 +131,26 @@ def run_model(
             device = torch.device("cpu")
         extra_kwargs["device"] = device
 
-        if model_cls_name == "SDCI-no-s1":
+        if model_cls_name == "SDCD-no-s1":
             # skip stage 1, stage 2 just has a mask for self-loops
             extra_kwargs["skip_stage1"] = True
 
-        if model_cls_name == "SDCI-no-s1-2":
+        if model_cls_name == "SDCD-no-s1-2":
             # skip stage 1, stage 2 just has a mask for self-loops
             # but set alpha and beta of stage 2 like those from stage 1
             extra_kwargs["skip_stage1"] = True
-            from sdci.models._sdci import _DEFAULT_STAGE1_KWARGS
+            from sdcd.models._sdcd import _DEFAULT_STAGE1_KWARGS
+
             extra_kwargs["stage2_kwargs"] = {
                 "alpha": _DEFAULT_STAGE1_KWARGS["alpha"],
                 "beta": _DEFAULT_STAGE1_KWARGS["beta"],
             }
 
-        if model_cls_name == "SDCI-warm":
+        if model_cls_name == "SDCD-warm":
             # warm start the input layer in stage 2 from stage 1 (maybe we should also warm start other layers?)
             extra_kwargs["warm_start"] = True
 
-        if model_cls_name == "SDCI-warm-nomask":
+        if model_cls_name == "SDCD-warm-nomask":
             # warm start the input layer in stage 2 from stage 1, but ignore the mask from stage 1
             extra_kwargs["warm_start"] = True
             extra_kwargs["skip_masking"] = True
@@ -180,10 +180,17 @@ def run_model(
 @click.command()
 @click.option("--n", default=10000, help="Per interventional subset")
 @click.option("--d", default=100, type=int, help="Number of dimensions")
-@click.option("--p", type=float, default=0.05, help="Expected edge density. (Ignored if s is specified)")
-@click.option("--s", type=int, default=4, help="Number of edges per dimension.  (Overrides p)")
+@click.option(
+    "--p",
+    type=float,
+    default=0.05,
+    help="Expected edge density. (Ignored if s is specified)",
+)
+@click.option(
+    "--s", type=int, default=4, help="Number of edges per dimension.  (Overrides p)"
+)
 @click.option("--seed", default=0, help="Random seed")
-@click.option("--model", type=str, default="SDCI", help="Which models to run")
+@click.option("--model", type=str, default="SDCD", help="Which models to run")
 @click.option("--force", default=True, help="If results exist, redo anyways.")
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
@@ -272,6 +279,7 @@ def create_data(n, d, s, seed):
         normalize=True,
         save_dir=save_dir,
     )
+
 
 if __name__ == "__main__":
     _run_full_pipeline()

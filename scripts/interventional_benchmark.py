@@ -1,4 +1,3 @@
-
 import sys
 
 sys.path.append("./")
@@ -12,18 +11,18 @@ import wandb
 import pprint
 from torch.utils.data import DataLoader
 
-from sdci.utils import (
+from sdcd.utils import (
     set_random_seed_all,
     create_intervention_dataset,
     train_val_split,
 )
-from sdci.simulated_data import random_model_gaussian_global_variance
-from sdci.models import SDCI, DCDFG, DCDI, GIES
+from sdcd.simulated_data import random_model_gaussian_global_variance
+from sdcd.models import SDCD, DCDFG, DCDI, GIES
 
 MODEL_CLS_DCT = {
     model_cls.__name__: model_cls
     for model_cls in [
-        SDCI,
+        SDCD,
         DCDFG,
         DCDI,
         GIES,
@@ -111,7 +110,7 @@ def run_model(
 
     wandb_config_dict["model"] = model_cls_name
     model = model_cls()
-    if model_cls_name == "SDCI":
+    if model_cls_name == "SDCD":
         extra_kwargs["B_true"] = B_true
 
     model.train(
@@ -144,7 +143,9 @@ def run_model(
 @click.option("--n_per_intervention", default=500, help="Per interventional subset")
 @click.option("--d", default=10, type=int, help="Number of dimensions")
 @click.option("--p", type=float, default=0.1, help="Expected edge density")
-@click.option("--s", type=int, default=-1, help="Number of edges per dimension.  (Overrides p)")
+@click.option(
+    "--s", type=int, default=-1, help="Number of edges per dimension.  (Overrides p)"
+)
 @click.option("--seed", default=0, help="Random seed")
 @click.option("--model", type=str, default="all", help="Which models to run")
 @click.option("--force", default=True, help="If results exist, redo anyways.")
@@ -153,8 +154,19 @@ def run_model(
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"
 )
-def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, sweep_frac,
-                       wandb_project_name, save_mtxs):
+def _run_full_pipeline(
+    n,
+    n_per_intervention,
+    d,
+    p,
+    s,
+    seed,
+    model,
+    force,
+    sweep_frac,
+    wandb_project_name,
+    save_mtxs,
+):
     if s != -1:
         n_edges = s * d
     else:
@@ -195,7 +207,7 @@ def _run_full_pipeline(n, n_per_intervention, d, p, s, seed, model, force, sweep
         results_df_rows = results_df.to_dict(orient="records")
 
     if sweep_frac:
-        intervention_fractions = [0., 0.25, 0.5, 0.75, 1.0]
+        intervention_fractions = [0.0, 0.25, 0.5, 0.75, 1.0]
     else:
         intervention_fractions = [1.0]  # of remaining interventions
 

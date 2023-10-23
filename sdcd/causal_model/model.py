@@ -5,7 +5,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from sdci.causal_model.mechanisms import MarginalDistribution
+from sdcd.causal_model.mechanisms import MarginalDistribution
 from ..utils import set_random_seed_all
 
 
@@ -28,8 +28,12 @@ class CausalModel:
         interventions: dict = None,
     ):
         self.graph = graph
-        self.causal_mechanisms = causal_mechanisms if causal_mechanisms is not None else dict()
-        self.interventions = interventions if interventions is not None else defaultdict(dict)
+        self.causal_mechanisms = (
+            causal_mechanisms if causal_mechanisms is not None else dict()
+        )
+        self.interventions = (
+            interventions if interventions is not None else defaultdict(dict)
+        )
 
         self.node_sort_idxs = np.argsort(self.graph.nodes)
         self.variables = np.array(self.graph.nodes)[self.node_sort_idxs].tolist()
@@ -52,9 +56,14 @@ class CausalModel:
         return sorted(self.graph.predecessors(node))
 
     def sample_from_model(self, n_samples, intervention_name=None):
-        if intervention_name is not None and intervention_name not in self.interventions:
+        if (
+            intervention_name is not None
+            and intervention_name not in self.interventions
+        ):
             raise ValueError(f"Intervention does not exist, {intervention_name}")
-        interventions = {} if intervention_name is None else self.interventions[intervention_name]
+        interventions = (
+            {} if intervention_name is None else self.interventions[intervention_name]
+        )
 
         samples_per_node = dict()
         for node in nx.topological_sort(self.graph):
@@ -64,8 +73,14 @@ class CausalModel:
                 distribution = interventions[node]
             else:
                 distribution = self.causal_mechanisms[node]
-            sample_shape = [n_samples] if len(parents) == 0 or isinstance(distribution, MarginalDistribution) else []
-            samples_per_node[node] = distribution.sample(sample_shape=sample_shape, parents_values=parents_values)
+            sample_shape = (
+                [n_samples]
+                if len(parents) == 0 or isinstance(distribution, MarginalDistribution)
+                else []
+            )
+            samples_per_node[node] = distribution.sample(
+                sample_shape=sample_shape, parents_values=parents_values
+            )
 
         return samples_per_node
 
@@ -106,7 +121,9 @@ class CausalModel:
         data = [pd.DataFrame(samples)]
 
         for intervention_name in self.interventions.keys():
-            samples = self.sample_from_interventional_distribution(n_samples_per_intervention, intervention_name)
+            samples = self.sample_from_interventional_distribution(
+                n_samples_per_intervention, intervention_name
+            )
             samples["perturbation_label"] = intervention_name
             samples = pd.DataFrame(samples)
             data.append(samples)
@@ -140,7 +157,9 @@ class CausalModel:
         """Check that the parents of the causal mechanisms are consistent with the graph."""
         for node, mechanism in self.causal_mechanisms.items():
             if not self._is_mechanism_consistent_with_graph(node, mechanism):
-                raise ValueError(f"Parents of the causal mechanism of node {node} are not consistent with the graph.")
+                raise ValueError(
+                    f"Parents of the causal mechanism of node {node} are not consistent with the graph."
+                )
 
         for intervention_name, new_mechanisms in self.interventions.items():
             for node, mechanism in new_mechanisms.items():

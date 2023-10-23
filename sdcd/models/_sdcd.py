@@ -57,7 +57,7 @@ _DEFAULT_MODEL_KWARGS = {
 NUM_WORKERS = 0
 
 
-class SDCI(BaseModel):
+class SDCD(BaseModel):
     def __init__(
         self,
         model_variance_flavor: Literal["unit", "nn", "parameter"] = "nn",
@@ -80,8 +80,8 @@ class SDCI(BaseModel):
         val_fraction: float = 0.2,
         log_wandb: bool = False,
         finetune: bool = False,
-        wandb_project: str = "SDCI",
-        wandb_name: str = "SDCI",
+        wandb_project: str = "SDCD",
+        wandb_name: str = "SDCD",
         wandb_config_dict: Optional[dict] = None,
         B_true: Optional[np.ndarray] = None,
         stage1_kwargs: Optional[dict] = None,
@@ -445,12 +445,12 @@ def _train(
 
             epoch_loss /= len(dataloader)
             if B_true is not None:
-                adjacency = SDCI.adjacency_dag_at_threshold(B_pred, threshold)
+                adjacency = SDCD.adjacency_dag_at_threshold(B_pred, threshold)
                 metrics_dict = compute_metrics(adjacency.astype(int), B_true)
                 print(
                     f"Epoch {epoch}: loss={epoch_loss:.2f}, score={metrics_dict['score']}, shd={metrics_dict['shd']}, gamma={gamma:.2f}"
                 )
-                adjacency_half_threshold = SDCI.adjacency_dag_at_threshold(
+                adjacency_half_threshold = SDCD.adjacency_dag_at_threshold(
                     B_pred, threshold / 2
                 )
                 metrics_dict_half = compute_metrics(
@@ -461,7 +461,7 @@ def _train(
                 }
                 metrics_dict.update(metrics_dict_half)
 
-                adjacency_double_threshold = SDCI.adjacency_dag_at_threshold(
+                adjacency_double_threshold = SDCD.adjacency_dag_at_threshold(
                     B_pred, threshold * 2
                 )
                 metrics_dict_double = compute_metrics(
