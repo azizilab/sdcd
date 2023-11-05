@@ -8,15 +8,15 @@ import click
 import numpy as np
 import wandb
 
-from sdci.simulated_data import deprecated_simulation
-from sdci.utils import (
+from sdcd.simulated_data import deprecated_simulation
+from sdcd.utils import (
     set_random_seed_all,
     create_intervention_dataset,
     subset_interventions,
 )
-from sdci.simulated_data import random_model_gaussian_global_variance
+from sdcd.simulated_data import random_model_gaussian_global_variance
 
-from sdci.models import SDCI, DCDI, DCDFG, DAGMA
+from sdcd.models import SDCD, DCDI, DCDFG, DAGMA
 
 
 def generate_dataset_deprecated(n, d, seed, frac_interventions, n_edges_per_d=5):
@@ -107,10 +107,10 @@ def generate_dataset(
     return X_df, B_true, wandb_config_dict
 
 
-def run_sdci(X_df, B_true, wandb_config_dict, wandb_project):
+def run_sdcd(X_df, B_true, wandb_config_dict, wandb_project):
     dataset = create_intervention_dataset(X_df, regime_format=True)
-    wandb_config_dict["model"] = "SDCI"
-    model = SDCI()
+    wandb_config_dict["model"] = "SDCD"
+    model = SDCD()
     model.train(
         dataset,
         log_wandb=True,
@@ -209,10 +209,10 @@ def run_full_pipeline(
     if save_mtxs:
         save_B_pred(B_true, n, d, seed, frac_interventions, "gt")
 
-    if model == "all" or model == "sdci":
-        B_pred = run_sdci(X_df, B_true, wandb_config_dict, wandb_project)
+    if model == "all" or model == "sdcd":
+        B_pred = run_sdcd(X_df, B_true, wandb_config_dict, wandb_project)
         if save_mtxs:
-            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdci")
+            save_B_pred(B_pred, n, d, seed, frac_interventions, "sdcd")
 
     if model == "all" or model == "dcdi":
         try:
@@ -244,8 +244,8 @@ def run_full_pipeline(
 @click.option("--frac_interventions", default=1.0, help="Fraction of interventions")
 @click.option(
     "--model",
-    default="sdci",
-    help="Model to run. Choices are [all, sdci, dcdi, dcdfg, dagma]",
+    default="sdcd",
+    help="Model to run. Choices are [all, sdcd, dcdi, dcdfg, dagma]",
 )
 @click.option(
     "--save_mtxs", default=True, help="Save matrices to saved_mtxs/ directory"

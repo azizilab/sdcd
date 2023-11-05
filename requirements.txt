@@ -7,7 +7,6 @@ seaborn
 scikit-learn
 wandb
 causaldag==0.1a163
-cdt==0.5.23
 conditional_independence==0.1a5
 gies
 networkx==2.6.3

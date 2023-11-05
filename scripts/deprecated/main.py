@@ -7,9 +7,9 @@ import seaborn as sns
 import torch.utils.data
 from torch import nn
 
-import sdci.simulated_data.deprecated_simulation as deprecated_simulation
-from sdci.models.modules import AutoEncoderLayers
-from sdci.utils import set_random_seed_all, print_graph_from_weights
+import sdcd.simulated_data.deprecated_simulation as deprecated_simulation
+from sdcd.models.modules import AutoEncoderLayers
+from sdcd.utils import set_random_seed_all, print_graph_from_weights
 
 set_random_seed_all(0)
 
