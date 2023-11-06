@@ -57,6 +57,15 @@ NUM_WORKERS = 0
 
 
 class SDCD(BaseModel):
+    """
+    SDCD (Stable Differentiable Causal Discovery) is a class for implementing the SDCD model.
+
+    Parameters:
+        model_variance_flavor (str): The flavor of model variance to use. Options are "unit", "nn", or "parameter".
+        standard_scale (bool): Whether to standard scale the data.
+        use_gumbel (bool): Whether to use Gumbel-Softmax relaxation for implicitly defining the adjacency matrix.
+    """
+
     def __init__(
         self,
         model_variance_flavor: Literal["unit", "nn", "parameter"] = "nn",
@@ -93,6 +102,29 @@ class SDCD(BaseModel):
         warm_start: bool = False,
         skip_masking: bool = False,
     ):
+        """
+        Trains the SDCD model.
+
+        Parameters:
+            dataset (Dataset): The dataset to train on.
+            val_dataset (Optional[Dataset]): The validation dataset. If None, a validation set is created from the training set.
+            val_fraction (float): The fraction of the training set to use as validation set if val_dataset is None.
+            log_wandb (bool): Whether to log training progress to Weights & Biases.
+            finetune (bool): Whether to finetune the model.
+            wandb_project (str): The Weights & Biases project name.
+            wandb_name (str): The Weights & Biases run name.
+            wandb_config_dict (Optional[dict]): Additional metadata to log in Weights & Biases.
+            B_true (Optional[np.ndarray]): The true adjacency matrix, if known, for logging metrics.
+            stage1_kwargs (Optional[dict]): Additional arguments for stage 1 training.
+            stage2_kwargs (Optional[dict]): Additional arguments for stage 2 training.
+            model_kwargs (Optional[dict]): Additional arguments for the model.
+            train_kwargs (Optional[dict]): Additional arguments for training.
+            verbose (bool): Whether to print verbose output.
+            device (Optional[torch.device]): The device to train on. If None, uses the default device.
+            skip_stage1 (bool): Whether to skip stage 1 of training.
+            warm_start (bool): Whether to start stage 2 training with learned input parameters from stage 1.
+            skip_masking (bool): Whether to skip masking removed edges in stage 2.
+        """
         set_random_seed_all(0)
 
         self._stage1_kwargs = {**_DEFAULT_STAGE1_KWARGS.copy(), **(stage1_kwargs or {})}
@@ -286,6 +318,11 @@ class SDCD(BaseModel):
         self._trained = True
 
     def fix_gumbel_threshold(self):
+        """
+        This method fixes the gumbel threshold for the adjacency matrix.
+        It is applicable only for models that use Gumbel adjacency.
+        The method operates in-place and does not return anything.
+        """
         assert (
             self.use_gumbel
         ), "Not applicable for models that do not use Gumbel adjacency."
