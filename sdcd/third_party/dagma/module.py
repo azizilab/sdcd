@@ -29,7 +29,9 @@ class LocallyConnected(nn.Module):
         self.input_features = input_features
         self.output_features = output_features
 
-        self.weight = nn.Parameter(torch.Tensor(num_linear, input_features, output_features))
+        self.weight = nn.Parameter(
+            torch.Tensor(num_linear, input_features, output_features)
+        )
         if bias:
             self.bias = nn.Parameter(torch.Tensor(num_linear, output_features))
         else:

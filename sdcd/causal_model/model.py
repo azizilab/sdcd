@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from sdcd.causal_model.mechanisms import MarginalDistribution
+
 from ..utils import set_random_seed_all
 
 

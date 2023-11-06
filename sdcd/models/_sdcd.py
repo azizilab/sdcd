@@ -1,27 +1,21 @@
 import copy
-import time
-from typing import Optional, Literal, Union
 import itertools
+import time
+from typing import Literal, Optional, Union
 
+import networkx as nx
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
 from torch import nn
+from torch.utils.data import DataLoader, Dataset
+
 import wandb
-import networkx as nx
 
-from ..utils import (
-    print_graph_from_weights,
-    move_modules_to_device,
-    TorchStandardScaler,
-    compute_metrics,
-    train_val_split,
-    set_random_seed_all,
-)
-
+from ..utils import (TorchStandardScaler, compute_metrics,
+                     move_modules_to_device, print_graph_from_weights,
+                     set_random_seed_all, train_val_split)
 from .base._base_model import BaseModel
 from .modules import AutoEncoderLayers
-
 
 _DEFAULT_STAGE1_KWARGS = {
     "learning_rate": 2e-3,

@@ -1,23 +1,15 @@
-import sys
-
-sys.path.append("./")
-
 import os
+import pprint
 
 import click
 import numpy as np
 import pandas as pd
-import wandb
-import pprint
-from torch.utils.data import DataLoader
 
-from sdcd.utils import (
-    set_random_seed_all,
-    create_intervention_dataset,
-    train_val_split,
-)
+import wandb
+from sdcd.models import DCDFG, DCDI, GIES, SDCD
 from sdcd.simulated_data import random_model_gaussian_global_variance
-from sdcd.models import SDCD, DCDFG, DCDI, GIES
+from sdcd.utils import (create_intervention_dataset, set_random_seed_all,
+                        train_val_split)
 
 MODEL_CLS_DCT = {
     model_cls.__name__: model_cls
@@ -45,8 +37,8 @@ def generate_interventional_dataset(
     assert n_edges <= d * (d - 1)
 
     if save_dir is not None:
-        X_path = os.path.join(save_dir, f"X.csv")
-        Btrue_path = os.path.join(save_dir, f"Btrue.csv")
+        X_path = os.path.join(save_dir, "X.csv")
+        Btrue_path = os.path.join(save_dir, "Btrue.csv")
         if os.path.exists(X_path) and os.path.exists(Btrue_path):
             X = pd.read_csv(X_path, index_col=0)
             B_true = np.loadtxt(Btrue_path, delimiter=",").astype(np.int64)

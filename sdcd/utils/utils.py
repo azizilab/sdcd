@@ -1,13 +1,13 @@
-from typing import Optional
 import random
-from tqdm import tqdm
+from typing import Optional
 
 import networkx as nx
 import numpy as np
+import pandas as pd
+import scipy.stats
 import torch
 import torch.nn as nn
-import scipy.stats
-import pandas as pd
+from tqdm import tqdm
 
 _THRESHOLDS = [0.5, 0.3, 0.1]
 
@@ -70,7 +70,9 @@ def compute_p_vals(X_df):
                 cand_int_subset_df.loc[:, target_gene_idx].to_numpy(),
             )
             edge_rows.append((candidate_parent_idx, target_gene_idx, pval))
-    edges_df = pd.DataFrame(edge_rows, columns=["candidate_parent_idx", "target_gene_idx", "pval"])
+    edges_df = pd.DataFrame(
+        edge_rows, columns=["candidate_parent_idx", "target_gene_idx", "pval"]
+    )
 
     # Compute BH corrected pvals
     edges_df = edges_df.sort_values("pval")
@@ -90,7 +92,9 @@ def ks_test_screen(X_df, use_sig=True, sig=0.10, n_parents=50, verbose=False):
     if use_sig:
         valid_edges_df = edges_df[edges_df.pval_adj < sig]
         if verbose:
-            print(f"Fraction edges valid under significance level {sig}: {len(valid_edges_df) / len(edges_df):.2f}")
+            print(
+                f"Fraction edges valid under significance level {sig}: {len(valid_edges_df) / len(edges_df):.2f}"
+            )
     else:
         G = X_df.shape[1] - 1
         if n_parents >= G:
@@ -98,7 +102,8 @@ def ks_test_screen(X_df, use_sig=True, sig=0.10, n_parents=50, verbose=False):
         else:
             valid_edges_dfs = []
             sorted_groups = [
-                df.sort_values("pval_adj", ascending=True) for _, df in edges_df.groupby(["target_gene_idx"])
+                df.sort_values("pval_adj", ascending=True)
+                for _, df in edges_df.groupby(["target_gene_idx"])
             ]
             for g in sorted_groups:
                 valid_edges_dfs.append(g[:n_parents])
@@ -141,19 +146,23 @@ def compute_min_dag_threshold(adjacency_matrix) -> float:
     def bisect(func, a, b, tol=1e-5):
         mid = (a + b) / 2.0
         while (b - a) / 2.0 > tol:
-            if func(mid) == True:
+            if func(mid) is True:
                 b = mid
             else:
                 a = mid
             mid = (a + b) / 2.0
         return mid
 
-    func = lambda threshold: is_acyclic(adjacency_matrix > threshold)
-    min_dag_threshold = bisect(func, 0, 10)
+    def is_dag_at_threshold(threshold):
+        return is_acyclic(adjacency_matrix > threshold)
+
+    min_dag_threshold = bisect(is_dag_at_threshold, 0, 10)
     return min_dag_threshold
 
 
-def print_graph_from_weights(d, B_pred, B_true, thresholds=_THRESHOLDS, max_parents=50, max_nodes=50):
+def print_graph_from_weights(
+    d, B_pred, B_true, thresholds=_THRESHOLDS, max_parents=50, max_nodes=50
+):
     B_true_square = B_true @ B_true
     for i in range(min(d, max_nodes)):
         parents_weights = B_pred[:, i]
@@ -177,7 +186,12 @@ def print_graph_from_weights(d, B_pred, B_true, thresholds=_THRESHOLDS, max_pare
             # and the next parent weight is less than the threshold
             for t in thresholds:
                 conditions = [
-                    (idx < d - 1 and parents_weights[parents[idx]] > t > parents_weights[parents[idx + 1]]),
+                    (
+                        idx < d - 1
+                        and parents_weights[parents[idx]]
+                        > t
+                        > parents_weights[parents[idx + 1]]
+                    ),
                     (idx == d - 1 and parents_weights[parents[idx]] > t),
                 ]
                 if any(conditions):

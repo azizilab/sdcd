@@ -4,7 +4,6 @@ import time
 import numpy as np
 import pandas as pd
 import scipy
-
 import torch
 import tqdm
 from matplotlib import pyplot as plt
@@ -14,7 +13,8 @@ penalty training: f(A) = ℓ(A) + h(A)
   > we need the gradient ∇h(A)
 augmented lagrangian training: f(A) = ℓ(A) + γ h(A) + μ/2 h(A)²
   > we need the gradient ∇h(A) and the gradient of h(A)² which is 2h(A) ∇h(A)
-the greek alphabet is: α, β, γ, δ, ε, ζ, η, θ, ι, κ, λ, μ, ν, ξ, ο, π, ρ, σ, τ, υ, φ, χ, ψ, ω
+the greek alphabet is: α, β, γ, δ, ε, ζ, η, θ, ι, κ, λ,
+    μ, ν, ξ, ο, π, ρ, σ, τ, υ, φ, χ, ψ, ω
 
 augmented lagrangian procedure:
   0. set η = 2, δ = 0.9, ε = 10⁻⁸
@@ -297,7 +297,8 @@ def training_augmented_lagrangian(
             full_losses_since_last = full_losses[-n_epochs_val:]
             if (
                 len(hs) > 1
-                and np.max(full_losses_since_last) - np.min(full_losses_since_last) < convergence_threshold
+                and np.max(full_losses_since_last) - np.min(full_losses_since_last)
+                < convergence_threshold
                 # and np.abs(hs[-1] - hs[-2]) < convergence_threshold
             ):
                 # we have converged, we update gamma and mu
@@ -442,11 +443,14 @@ def paper_experiment():
     n_cols = 2
     n_rows = 1
     width_ratios = [0.8, 1]
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(3 * 2, 2.5), width_ratios=width_ratios)
+    fig, axes = plt.subplots(
+        n_rows, n_cols, figsize=(3 * 2, 2.5), width_ratios=width_ratios
+    )
     _DEBUG = 1
     _paper_experiment_run(anchor, 8_000 // _DEBUG, axes[0], mode="penalty")
-    metrics = _paper_experiment_run(anchor, 200_000 // _DEBUG, axes[1], mode="augmented_lagrangian")
-    # _plot_last_mus(metrics, axes[2])
+    _paper_experiment_run(
+        anchor, 200_000 // _DEBUG, axes[1], mode="augmented_lagrangian"
+    )
 
     ax = axes[0]
     ax.legend(

@@ -3,12 +3,11 @@ Contains helper modules used in the models.
 """
 from typing import Literal
 
+import numpy as np
 import scipy.sparse
 import torch
-import torch.nn as nn
 import torch.distributions as dist
-
-import numpy as np
+import torch.nn as nn
 
 from ..third_party.utils.dag_optim import GumbelAdjacency
 

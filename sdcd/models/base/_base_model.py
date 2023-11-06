@@ -4,9 +4,7 @@ from typing import Optional
 import numpy as np
 from torch.utils.data import Dataset
 
-from ...utils import (
-    compute_metrics, set_random_seed_all,
-)
+from ...utils import compute_metrics, set_random_seed_all
 
 
 class BaseModel:

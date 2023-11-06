@@ -74,7 +74,10 @@ def h_eigen_max(matrix):
 
 # create normed versions of the constraints, automatically
 for func in [h_exp, h_log, h_inv, h_power]:
-    func_normed = lambda matrix: func(matrix / np.linalg.norm(matrix, ord="fro"))
+
+    def func_normed(matrix):
+        return func(matrix / np.linalg.norm(matrix, ord="fro"))
+
     func_normed.__name__ = f"{func.__name__}_normed"
     globals()[f"{func.__name__}_normed"] = func_normed
 
@@ -137,7 +140,13 @@ def analyze_over_range_of_d(
 
 
 def plot_analysis_over_range_of_d(
-    penalties, colors, noise_type="single_cycle_length_d/2", epsilon=0.5, n_space=100, ax=None, ls="-"
+    penalties,
+    colors,
+    noise_type="single_cycle_length_d/2",
+    epsilon=0.5,
+    n_space=100,
+    ax=None,
+    ls="-",
 ):
     if ax is None:
         with plt.rc_context({"figure.figsize": (4, 3), "figure.dpi": 200}):
@@ -228,7 +237,12 @@ def analyze_over_range_of_epsilon(
 
 
 def plot_analysis_over_range_of_epsilon(
-    penalties, colors, noise_type="single_cycle_length_d/2", range_eps=np.linspace(0, 1.0, 100), ax=None, ls="-"
+    penalties,
+    colors,
+    noise_type="single_cycle_length_d/2",
+    range_eps=np.linspace(0, 1.0, 100),
+    ax=None,
+    ls="-",
 ):
     if ax is None:
         with plt.rc_context({"figure.figsize": (4, 3), "figure.dpi": 200}):
@@ -278,16 +292,22 @@ def plot_4():
     # increase font size and line width
     with plt.rc_context({"font.size": 13}):
         fig, axes = plt.subplots(2, 2, figsize=(7, 5), dpi=200)
-    plot_analysis_over_range_of_d(noise_type="single_cycle_length_d/2", epsilon=0.5, ax=axes[0, 0])
+    plot_analysis_over_range_of_d(
+        noise_type="single_cycle_length_d/2", epsilon=0.5, ax=axes[0, 0]
+    )
     axes[0, 0].set_ylim(1e-16, 1e5)
     axes[0, 0].set_ylabel(r"$h(\epsilon \cdot$ d/2-cycle )")
     plot_analysis_over_range_of_d(noise_type="random_01", epsilon=0.5, ax=axes[1, 0])
     axes[1, 0].set_ylim(1e-1, 1e10)
     axes[1, 0].set_ylabel(r"$h(\epsilon \cdot$ [0,1]-noise )")
-    plot_analysis_over_range_of_epsilon(noise_type="single_cycle_length_d/2", ax=axes[0, 1])
+    plot_analysis_over_range_of_epsilon(
+        noise_type="single_cycle_length_d/2", ax=axes[0, 1]
+    )
     axes[0, 1].set_ylim(1e-16, 1e5)
     axes[0, 1].set_ylabel(r"$h(\epsilon \cdot$ d/2-cycle)")
-    plot_analysis_over_range_of_epsilon(noise_type="random_01", n_space=1000, ax=axes[1, 1])
+    plot_analysis_over_range_of_epsilon(
+        noise_type="random_01", n_space=1000, ax=axes[1, 1]
+    )
     axes[1, 1].set_ylim(1e-5, 1e5)
     axes[1, 1].set_ylabel(r"$h(\epsilon \cdot$ [0,1]-noise)")
 
@@ -320,7 +340,9 @@ def plot_2():
     torch.manual_seed(0)
     # increase font size and line width
     with plt.rc_context({"font.size": 13}):
-        fig, axes = plt.subplots(1, 2, figsize=(6, 2.5), dpi=200, squeeze=False, sharey=True)
+        fig, axes = plt.subplots(
+            1, 2, figsize=(6, 2.5), dpi=200, squeeze=False, sharey=True
+        )
 
     penalties = {
         r"$h_{\rho}$": h_eigen_max,
@@ -337,10 +359,22 @@ def plot_2():
         "C4",
     ]
     plot_analysis_over_range_of_d(
-        penalties, colors, noise_type="single_cycle_length_d/2", epsilon=0.5, ax=axes[0, 1], ls=(0, ()), n_space=50
+        penalties,
+        colors,
+        noise_type="single_cycle_length_d/2",
+        epsilon=0.5,
+        ax=axes[0, 1],
+        ls=(0, ()),
+        n_space=50,
     )
     plot_analysis_over_range_of_d(
-        penalties, colors, noise_type="random_01", epsilon=0.5, ax=axes[0, 1], ls=(0, (5, 0.7, 1, 0.7)), n_space=50
+        penalties,
+        colors,
+        noise_type="random_01",
+        epsilon=0.5,
+        ax=axes[0, 1],
+        ls=(0, (5, 0.7, 1, 0.7)),
+        n_space=50,
     )
     axes[0, 0].set_ylim(1e-16, 1e16)
     axes[0, 0].set_ylabel(r"$h(A(\epsilon, d))$")
@@ -351,10 +385,20 @@ def plot_2():
     )
 
     plot_analysis_over_range_of_epsilon(
-        penalties, colors, noise_type="single_cycle_length_d/2", range_eps=range_epsilon, ax=axes[0, 0], ls=(0, ())
+        penalties,
+        colors,
+        noise_type="single_cycle_length_d/2",
+        range_eps=range_epsilon,
+        ax=axes[0, 0],
+        ls=(0, ()),
     )
     plot_analysis_over_range_of_epsilon(
-        penalties, colors, noise_type="random_01", range_eps=range_epsilon, ax=axes[0, 0], ls=(0, (5, 0.7, 1, 0.7))
+        penalties,
+        colors,
+        noise_type="random_01",
+        range_eps=range_epsilon,
+        ax=axes[0, 0],
+        ls=(0, (5, 0.7, 1, 0.7)),
     )
     axes[0, 1].set_ylim(1e-16, 1e16)
 
@@ -382,7 +426,12 @@ def plot_2():
     axes[0, 1].set_title("$d = 30$", fontsize=16)
     axes[0, 1].text(1, 1, "cycle")
     plt.tight_layout()
-    plt.savefig("figures/constraints.asymptotic.pdf", bbox_inches="tight", pad_inches=0, bbox_extra_artists=[legend])
+    plt.savefig(
+        "figures/constraints.asymptotic.pdf",
+        bbox_inches="tight",
+        pad_inches=0,
+        bbox_extra_artists=[legend],
+    )
     plt.show()
 
 

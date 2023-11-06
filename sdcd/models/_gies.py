@@ -3,6 +3,7 @@ from typing import Optional
 
 import numpy as np
 from torch.utils.data import Dataset
+
 import wandb
 
 from .base._base_model import BaseModel

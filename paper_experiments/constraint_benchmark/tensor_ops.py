@@ -3,10 +3,10 @@ Benchmark the speed of tensor operations.
 """
 import abc
 import time
+
 import torch
 import tqdm
 from torch_sparse import SparseTensor
-
 
 # models
 # 1. dense matrix
@@ -26,7 +26,7 @@ def time_it(func, n_loop=100, max_time=5, *args, **kwargs):
     total_time = 0
     # warm up with some iterations and some tensor operations
     for i in range(1000):
-        a = torch.zeros(100) + 10
+        _ = torch.zeros(100) + 10
 
     for i in range(n_loop):
         start = time.time()
@@ -51,7 +51,9 @@ class Matrix(abc.ABC):
         benchmark = dict()
 
         # 1. matrix initialization
-        benchmark["matrix_init"] = time_it(self.set_matrix, n_loop, max_time, self._matrix)
+        benchmark["matrix_init"] = time_it(
+            self.set_matrix, n_loop, max_time, self._matrix
+        )
 
         # 2. matrix vector multiplication
         v = torch.randn(self._matrix.shape[1])
@@ -202,7 +204,9 @@ if __name__ == "__main__":
     df = df.reset_index()
     df = df.melt(id_vars=["index", "k", "d"], var_name="operation", value_name="time")
     # do not share y-axis
-    g = sns.FacetGrid(df, col="operation", hue="index", row="k", height=4, aspect=1.5, sharey=False)
+    g = sns.FacetGrid(
+        df, col="operation", hue="index", row="k", height=4, aspect=1.5, sharey=False
+    )
     g.map(sns.lineplot, "d", "time")
     g.add_legend()
     g.set_titles("{row_name} - {col_name}")

@@ -1,15 +1,7 @@
 import pytest
 
-from sdcd.models import (
-    SDCD,
-    DCDI,
-    DCDFG,
-    GIES,
-    DAGMA,
-    NOBEARS,
-    NOTEARS,
-    Sortnregress,
-)
+from sdcd.models import (DAGMA, DCDFG, DCDI, GIES, NOBEARS, NOTEARS, SDCD,
+                         Sortnregress)
 
 from .utils import generate_test_dataset
 

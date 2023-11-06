@@ -3,11 +3,11 @@ from typing import Optional
 
 import numpy as np
 from torch.utils.data import Dataset
+
 import wandb
 
-
-from .base._base_model import BaseModel
 from ..utils import compute_min_dag_threshold
+from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict(
     lambda1=0.1,

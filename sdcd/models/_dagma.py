@@ -3,11 +3,11 @@ from typing import Optional
 
 import numpy as np
 from torch.utils.data import Dataset
+
 import wandb
 
-
-from .base._base_model import BaseModel
 from ..utils import set_random_seed_all
+from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict(
     num_layers=2,
@@ -34,7 +34,7 @@ class DAGMA(BaseModel):
         **model_kwargs,
     ):
         try:
-            from ..third_party.dagma import DagmaNonlinear, DagmaMLP
+            from ..third_party.dagma import DagmaMLP, DagmaNonlinear
         except ImportError as e:
             raise ImportError(
                 "You must install the 'benchmark' extra to use this class. Run `pip install sdcd[benchmark]`"

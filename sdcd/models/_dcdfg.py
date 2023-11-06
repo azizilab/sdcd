@@ -2,11 +2,12 @@ import time
 from typing import Optional
 
 import numpy as np
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, random_split
+
 import wandb
 
-from .base._base_model import BaseModel
 from ..utils import set_random_seed_all
+from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict(
     num_layers=2,
@@ -41,12 +42,10 @@ class DCDFG(BaseModel):
             from pytorch_lightning.callbacks import EarlyStopping
             from pytorch_lightning.loggers import WandbLogger
 
+            from ..third_party.callback import (AugLagrangianCallback,
+                                                ConditionalEarlyStopping,
+                                                CustomProgressBar)
             from ..third_party.dcdfg import MLPModuleGaussianModel
-            from ..third_party.callback import (
-                AugLagrangianCallback,
-                ConditionalEarlyStopping,
-                CustomProgressBar,
-            )
         except ImportError as e:
             raise ImportError(
                 "You must install the 'benchmark' extra to use this class. Run `pip install sdcd[benchmark]`"

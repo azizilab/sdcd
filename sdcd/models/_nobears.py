@@ -3,11 +3,11 @@ from typing import Optional
 
 import numpy as np
 from torch.utils.data import Dataset
+
 import wandb
 
-from .base._base_model import BaseModel
 from ..utils import compute_min_dag_threshold
-
+from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict()  # dict(w_threshold=0.05)
 
@@ -28,6 +28,7 @@ class NOBEARS(BaseModel):
     ):
         try:
             import tensorflow as tf
+
             from ..third_party.nobears import NoBearsTF, W_reg_init
         except ImportError as e:
             raise ImportError(

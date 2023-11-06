@@ -2,9 +2,11 @@ import abc
 import copy
 from typing import Union
 
-from torch.distributions import Distribution, AffineTransform, TransformedDistribution
+from torch.distributions import (AffineTransform, Distribution,
+                                 TransformedDistribution)
 
-# For simplicity, we directly use torch distribution, but what we need is just a class with a sample method
+# For simplicity, we directly use torch distribution,
+# but what we need is just a class with a sample method
 # class Distribution(abc.ABC):
 #     @abc.abstractmethod
 #     def sample(self, n_samples):
@@ -21,7 +23,9 @@ class ConditionalDistribution(abc.ABC):
         pass
 
     def sample(self, sample_shape, parents_values):
-        return self.compute_distribution_from_parents(parents_values).sample(sample_shape)
+        return self.compute_distribution_from_parents(parents_values).sample(
+            sample_shape
+        )
 
 
 Mechanism = Union[Distribution, ConditionalDistribution]
@@ -81,7 +85,9 @@ class ParametricConditionalDistribution(ConditionalDistribution):
 
     def compute_distribution_from_parents(self, parent_values) -> Distribution:
         conditional_parameters = self.conditional_parameters_func(parent_values)
-        response_distribution = self.response_distribution_constructor(**conditional_parameters)
+        response_distribution = self.response_distribution_constructor(
+            **conditional_parameters
+        )
         return response_distribution
 
 
@@ -109,8 +115,10 @@ def scale_mechanism(mechanism: Mechanism, scale: float) -> Mechanism:
         new_mechanism = TransformedDistribution(mechanism, [transform])
     elif isinstance(mechanism, ConditionalDistribution):
         new_mechanism = copy.deepcopy(mechanism)
-        new_mechanism.response_distribution_constructor = lambda **kwargs: TransformedDistribution(
-            mechanism.response_distribution_constructor(**kwargs), [transform]
+        new_mechanism.response_distribution_constructor = (
+            lambda **kwargs: TransformedDistribution(
+                mechanism.response_distribution_constructor(**kwargs), [transform]
+            )
         )
     else:
         raise ValueError(f"Unknown mechanism type {type(mechanism)}")
