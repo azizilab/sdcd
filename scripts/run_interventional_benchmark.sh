@@ -17,7 +17,7 @@ do
         for seed in "${seed_vals[@]}"
         do
             # Run the Python script with the current values of d and seed
-            python3 scripts/interventional_benchmark.py --d $d --p $p --seed $seed --model SDCI --force True
+            python3 scripts/interventional_benchmark.py --d $d --p $p --seed $seed --model all --force True
 
             # Add a newline for separation between iterations
             echo ""
