@@ -41,9 +41,11 @@ class DCDI(BaseModel):
             from pytorch_lightning.callbacks import EarlyStopping
             from pytorch_lightning.loggers import WandbLogger
 
-            from ..third_party.callback import (AugLagrangianCallback,
-                                                ConditionalEarlyStopping,
-                                                CustomProgressBar)
+            from ..third_party.callback import (
+                AugLagrangianCallback,
+                ConditionalEarlyStopping,
+                CustomProgressBar,
+            )
             from ..third_party.dcdi import MLPGaussianModel
         except ImportError as e:
             raise ImportError(

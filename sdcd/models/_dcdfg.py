@@ -42,9 +42,11 @@ class DCDFG(BaseModel):
             from pytorch_lightning.callbacks import EarlyStopping
             from pytorch_lightning.loggers import WandbLogger
 
-            from ..third_party.callback import (AugLagrangianCallback,
-                                                ConditionalEarlyStopping,
-                                                CustomProgressBar)
+            from ..third_party.callback import (
+                AugLagrangianCallback,
+                ConditionalEarlyStopping,
+                CustomProgressBar,
+            )
             from ..third_party.dcdfg import MLPModuleGaussianModel
         except ImportError as e:
             raise ImportError(

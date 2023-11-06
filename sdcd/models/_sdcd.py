@@ -11,9 +11,14 @@ from torch.utils.data import DataLoader, Dataset
 
 import wandb
 
-from ..utils import (TorchStandardScaler, compute_metrics,
-                     move_modules_to_device, print_graph_from_weights,
-                     set_random_seed_all, train_val_split)
+from ..utils import (
+    TorchStandardScaler,
+    compute_metrics,
+    move_modules_to_device,
+    print_graph_from_weights,
+    set_random_seed_all,
+    train_val_split,
+)
 from .base._base_model import BaseModel
 from .modules import AutoEncoderLayers
 

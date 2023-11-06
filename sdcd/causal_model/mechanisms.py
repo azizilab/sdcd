@@ -2,8 +2,7 @@ import abc
 import copy
 from typing import Union
 
-from torch.distributions import (AffineTransform, Distribution,
-                                 TransformedDistribution)
+from torch.distributions import AffineTransform, Distribution, TransformedDistribution
 
 # For simplicity, we directly use torch distribution,
 # but what we need is just a class with a sample method

@@ -7,8 +7,7 @@ import pandas as pd
 import torch
 
 import wandb
-from sdcd.models import (DAGMA, DCDFG, DCDI, GIES, NOBEARS, NOTEARS, SDCD,
-                         Sortnregress)
+from sdcd.models import DAGMA, DCDFG, DCDI, GIES, NOBEARS, NOTEARS, SDCD, Sortnregress
 from sdcd.simulated_data import random_model_gaussian_global_variance
 from sdcd.utils import create_intervention_dataset, set_random_seed_all
 

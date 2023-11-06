@@ -8,8 +8,7 @@ import pandas as pd
 import wandb
 from sdcd.models import DCDFG, DCDI, GIES, SDCD
 from sdcd.simulated_data import random_model_gaussian_global_variance
-from sdcd.utils import (create_intervention_dataset, set_random_seed_all,
-                        train_val_split)
+from sdcd.utils import create_intervention_dataset, set_random_seed_all, train_val_split
 
 MODEL_CLS_DCT = {
     model_cls.__name__: model_cls

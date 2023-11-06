@@ -1,5 +1,9 @@
-from .mechanisms import (MarginalDistribution, Mechanism,
-                         ParametricConditionalDistribution, scale_mechanism)
+from .mechanisms import (
+    MarginalDistribution,
+    Mechanism,
+    ParametricConditionalDistribution,
+    scale_mechanism,
+)
 from .model import CausalModel
 
 __all__ = [
