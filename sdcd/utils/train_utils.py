@@ -2,6 +2,7 @@ from typing import Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import scipy as sp
 import torch
 from torch.utils.data import Dataset, TensorDataset
 
@@ -53,11 +54,45 @@ def create_intervention_dataset(
     )
     # ensure interventions are ints mapping to index of column
     column_mapping = {str(c): i for i, c in enumerate(X_df.columns[:-1])}
+    return _create_intervention_dataset_helper(
+        X, X_df[perturbation_colname], column_mapping, regime_format=regime_format
+    )
 
+
+def create_intervention_dataset_anndata(
+    adata,
+    layer=None,
+    perturbation_obsname="perturbation_label",
+    regime_format=True,
+):
+    assert (
+        perturbation_obsname in adata.obs.columns
+    ), f"{perturbation_obsname} not found in adata.obs"
+
+    if layer is not None:
+        X = adata.layers[layer]
+    else:
+        X = adata.X
+    X = X.toarray() if isinstance(X, sp.sparse.spmatrix) else X.copy()
+    X = torch.FloatTensor(X.astype(float))
+
+    # ensure interventions are ints mapping to index of column
+    column_mapping = {str(c): i for i, c in enumerate(adata.var_names)}
+
+    return _create_intervention_dataset_helper(
+        X, adata.obs[perturbation_obsname], column_mapping, regime_format=regime_format
+    )
+
+
+def _create_intervention_dataset_helper(
+    X,
+    perturbations,
+    column_mapping,
+    regime_format=True,
+):
     # Split the perturbation_colname by comma and map each value to its column index
     unstacked_perturbation_columns = (
-        X_df[perturbation_colname]
-        .map(str)
+        perturbations.map(str)
         .str.split(",", expand=True)
         .reset_index(drop=True)
         .stack()
@@ -74,21 +109,17 @@ def create_intervention_dataset(
         # Split comma-separated strings and convert to a binary matrix
         def string_to_binary(row):
             if row == "":
-                return np.ones(X_df.shape[1] - 1, dtype=int)
+                return np.ones(X.shape[1], dtype=int)
             else:
                 indices = set(map(int, row.split(",")))
-                return np.array(
-                    [0 if i in indices else 1 for i in range(X_df.shape[1] - 1)]
-                )
+                return np.array([0 if i in indices else 1 for i in range(X.shape[1])])
 
         mask_interventions_oh = combined_columns.apply(string_to_binary)
         mask_interventions_oh = torch.LongTensor(
             np.vstack(mask_interventions_oh.to_numpy())
         )
 
-        n_regimes = torch.LongTensor(
-            X_df.shape[1] - 1 - mask_interventions_oh.sum(axis=1)
-        )
+        n_regimes = torch.LongTensor(X.shape[1] - mask_interventions_oh.sum(axis=1))
 
         return torch.utils.data.TensorDataset(X, mask_interventions_oh, n_regimes)
 

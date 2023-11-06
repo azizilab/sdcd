@@ -1,6 +1,7 @@
 from .train_utils import (
     compute_metrics,
     create_intervention_dataset,
+    create_intervention_dataset_anndata,
     subset_interventions,
     train_val_split,
 )
@@ -18,6 +19,7 @@ from .utils import (
 __all__ = [
     "compute_metrics",
     "create_intervention_dataset",
+    "create_intervention_dataset_anndata",
     "subset_interventions",
     "train_val_split",
     "TorchStandardScaler",
