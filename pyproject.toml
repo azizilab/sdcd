@@ -37,6 +37,9 @@ matplotlib = {version = "^3.8.1", optional = true}
 tests = ["pytest", "gies", "scikit-learn", "pytorch-lightning", "tensorflow", "tensorflow-macos"]
 benchmark = ["gies", "scikit-learn", "pytorch-lightning", "tensorflow", "click", "seaborn", "matplotlib"]
 
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.5.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
