@@ -4,16 +4,6 @@ from typing import Optional
 import numpy as np
 from torch.utils.data import Dataset, DataLoader, random_split
 import wandb
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.loggers import WandbLogger
-
-from ..third_party.dcdi import MLPGaussianModel
-from ..third_party.callback import (
-    AugLagrangianCallback,
-    ConditionalEarlyStopping,
-    CustomProgressBar,
-)
 
 from .base._base_model import BaseModel
 from ..utils import set_random_seed_all
@@ -45,6 +35,22 @@ class DCDI(BaseModel):
         finetune: bool = False,
         **model_kwargs,
     ):
+        try:
+            import pytorch_lightning as pl
+            from pytorch_lightning.callbacks import EarlyStopping
+            from pytorch_lightning.loggers import WandbLogger
+
+            from ..third_party.dcdi import MLPGaussianModel
+            from ..third_party.callback import (
+                AugLagrangianCallback,
+                ConditionalEarlyStopping,
+                CustomProgressBar,
+            )
+        except ImportError as e:
+            raise ImportError(
+                "You must install the 'benchmark' extra to use this class. Run `pip install sdcd[benchmark]`"
+            ) from e
+
         set_random_seed_all(0)
         if log_wandb:
             wandb_config_dict = wandb_config_dict or {}

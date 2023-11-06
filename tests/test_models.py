@@ -1,6 +1,6 @@
 import pytest
 
-from ..models import (
+from sdcd.models import (
     SDCD,
     DCDI,
     DCDFG,

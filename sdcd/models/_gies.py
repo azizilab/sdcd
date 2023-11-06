@@ -4,8 +4,6 @@ from typing import Optional
 import numpy as np
 from torch.utils.data import Dataset
 import wandb
-import gies
-gies.np.bool = bool # bug in gies with newer np version
 
 from .base._base_model import BaseModel
 
@@ -25,6 +23,14 @@ class GIES(BaseModel):
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
+        try:
+            import gies
+        except ImportError as e:
+            raise ImportError(
+                "You must install the 'benchmark' extra to use this class. Run `pip install sdcd[benchmark]`"
+            ) from e
+        gies.np.bool = bool  # bug in gies with newer np version
+
         assert len(dataset.tensors) == 3, "Dataset must be in regime format"
 
         if log_wandb:
