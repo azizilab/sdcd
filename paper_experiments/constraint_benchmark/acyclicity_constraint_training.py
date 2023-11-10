@@ -13,8 +13,6 @@ penalty training: f(A) = ℓ(A) + h(A)
   > we need the gradient ∇h(A)
 augmented lagrangian training: f(A) = ℓ(A) + γ h(A) + μ/2 h(A)²
   > we need the gradient ∇h(A) and the gradient of h(A)² which is 2h(A) ∇h(A)
-the greek alphabet is: α, β, γ, δ, ε, ζ, η, θ, ι, κ, λ,
-    μ, ν, ξ, ο, π, ρ, σ, τ, υ, φ, χ, ψ, ω
 
 augmented lagrangian procedure:
   0. set η = 2, δ = 0.9, ε = 10⁻⁸
