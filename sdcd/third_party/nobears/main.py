@@ -1,8 +1,8 @@
 """
 From https://github.com/howchihlee/BNGPU/blob/master/BNGPU/NOBEARS.py.
 """
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 from scipy.optimize import lsq_linear
 from scipy.stats.stats import spearmanr
 

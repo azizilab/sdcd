@@ -2,21 +2,12 @@ import time
 from typing import Optional
 
 import numpy as np
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, random_split
+
 import wandb
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.loggers import WandbLogger
 
-from ..third_party.dcdfg import MLPModuleGaussianModel
-from ..third_party.callback import (
-    AugLagrangianCallback,
-    ConditionalEarlyStopping,
-    CustomProgressBar,
-)
-
-from .base._base_model import BaseModel
 from ..utils import set_random_seed_all
+from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict(
     num_layers=2,
@@ -46,6 +37,22 @@ class DCDFG(BaseModel):
         finetune: bool = False,
         **model_kwargs,
     ):
+        try:
+            import pytorch_lightning as pl
+            from pytorch_lightning.callbacks import EarlyStopping
+            from pytorch_lightning.loggers import WandbLogger
+
+            from ..third_party.callback import (
+                AugLagrangianCallback,
+                ConditionalEarlyStopping,
+                CustomProgressBar,
+            )
+            from ..third_party.dcdfg import MLPModuleGaussianModel
+        except ImportError as e:
+            raise ImportError(
+                "You must install the 'benchmark' extra to use this class. Run `pip install sdcd[benchmark]`"
+            ) from e
+
         set_random_seed_all(0)
         train_dataset, val_dataset = random_split(
             dataset,
@@ -70,10 +77,7 @@ class DCDFG(BaseModel):
             wandb.init(
                 project=wandb_project,
                 name="DCDFG",
-                config={
-                    "num_modules": num_modules,
-                    **wandb_config_dict
-                },
+                config={"num_modules": num_modules, **wandb_config_dict},
             )
 
         start = time.time()

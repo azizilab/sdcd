@@ -3,9 +3,10 @@ import copy
 import numpy as np
 import torch
 import torch.nn as nn
-import wandb
 from torch import optim
 from tqdm.auto import tqdm
+
+import wandb
 
 
 class DagmaNonlinear:
@@ -35,7 +36,10 @@ class DagmaNonlinear:
     ):
         self.vprint(f"\nMinimize s={s} -- lr={lr}")
         optimizer = optim.Adam(
-            self.model.parameters(), lr=lr, betas=(0.99, 0.999), weight_decay=mu * lambda2
+            self.model.parameters(),
+            lr=lr,
+            betas=(0.99, 0.999),
+            weight_decay=mu * lambda2,
         )
         if lr_decay is True:
             scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)

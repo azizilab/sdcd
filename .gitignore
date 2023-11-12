@@ -1,14 +1,10 @@
 external/*
 __pycache__/*
 **/__pycache__/*
-notebooks/.ipynb_checkpoints/**
-notebooks/.DS_Store
+**/.ipynb_checkpoints/**
+**/.DS_Store
 **/wandb/*
-saved_mtxs/*
-saved_mtxs_old/*
-.DS_Store
 **.pyc
-full-pipeline-simulation-*
+**/**.ckpt
 .vscode/*
 checkpoints/**
-achille/*

@@ -3,12 +3,11 @@ from typing import Optional
 
 import numpy as np
 from torch.utils.data import Dataset
+
 import wandb
 
-from ..third_party.notears import notears_linear
-
-from .base._base_model import BaseModel
 from ..utils import compute_min_dag_threshold
+from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict(
     lambda1=0.1,
@@ -31,6 +30,13 @@ class NOTEARS(BaseModel):
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
+        try:
+            from ..third_party.notears import notears_linear
+        except ImportError as e:
+            raise ImportError(
+                "You must install the 'benchmark' extra to use this class. Run `pip install sdcd[benchmark]`"
+            ) from e
+
         assert len(dataset.tensors) == 3, "Dataset must be in regime format"
         assert not dataset.tensors[2].any(), "Dataset must be fully observational"
 

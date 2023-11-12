@@ -2,15 +2,12 @@ import time
 from typing import Optional
 
 import numpy as np
-import tensorflow as tf
 from torch.utils.data import Dataset
+
 import wandb
 
-from ..third_party.nobears import NoBearsTF, W_reg_init
-
-from .base._base_model import BaseModel
 from ..utils import compute_min_dag_threshold
-
+from .base._base_model import BaseModel
 
 _DEFAULT_MODEL_KWARGS = dict()  # dict(w_threshold=0.05)
 
@@ -29,6 +26,15 @@ class NOBEARS(BaseModel):
         wandb_config_dict: Optional[dict] = None,
         **model_kwargs,
     ):
+        try:
+            import tensorflow as tf
+
+            from ..third_party.nobears import NoBearsTF, W_reg_init
+        except ImportError as e:
+            raise ImportError(
+                "You must install the 'benchmark' extra to use this class. Run `pip install sdcd[benchmark]`"
+            ) from e
+
         assert len(dataset.tensors) == 3, "Dataset must be in regime format"
         assert not dataset.tensors[2].any(), "Dataset must be fully observational"
 

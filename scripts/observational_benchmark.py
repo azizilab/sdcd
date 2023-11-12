@@ -1,23 +1,15 @@
-import sys
-
-import torch
-
-sys.path.append("./")
-
 import os
+import pprint
 
 import click
 import numpy as np
 import pandas as pd
-import wandb
-import pprint
+import torch
 
-from sdcd.utils import (
-    set_random_seed_all,
-    create_intervention_dataset,
-)
+import wandb
+from sdcd.models import DAGMA, DCDFG, DCDI, GIES, NOBEARS, NOTEARS, SDCD, Sortnregress
 from sdcd.simulated_data import random_model_gaussian_global_variance
-from sdcd.models import SDCD, DCDI, DCDFG, GIES, DAGMA, NOBEARS, NOTEARS, Sortnregress
+from sdcd.utils import create_intervention_dataset, set_random_seed_all
 
 MODEL_CLS_DCT = {
     model_cls.__name__: model_cls
@@ -54,8 +46,8 @@ def generate_observational_dataset(
     assert n_edges <= d * (d - 1)
 
     if save_dir is not None:
-        X_path = os.path.join(save_dir, f"X.csv")
-        Btrue_path = os.path.join(save_dir, f"Btrue.csv")
+        X_path = os.path.join(save_dir, "X.csv")
+        Btrue_path = os.path.join(save_dir, "Btrue.csv")
         if os.path.exists(X_path) and os.path.exists(Btrue_path):
             X = pd.read_csv(X_path, index_col=0)
             B_true = np.loadtxt(Btrue_path, delimiter=",").astype(np.int64)
@@ -147,11 +139,12 @@ def run_model(
             }
 
         if model_cls_name == "SDCD-warm":
-            # warm start the input layer in stage 2 from stage 1 (maybe we should also warm start other layers?)
+            # warm start the input layer in stage 2 from stage 1
             extra_kwargs["warm_start"] = True
 
         if model_cls_name == "SDCD-warm-nomask":
-            # warm start the input layer in stage 2 from stage 1, but ignore the mask from stage 1
+            # warm start the input layer in stage 2 from stage 1,
+            # but ignore the mask from stage 1
             extra_kwargs["warm_start"] = True
             extra_kwargs["skip_masking"] = True
 

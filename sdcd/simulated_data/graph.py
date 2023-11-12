@@ -54,7 +54,9 @@ def random_dag(n_nodes: int = 20, n_edges: int = 20, distribution: str = "unifor
     return random_dag_from_undirected_graph(graph)
 
 
-def random_diagonal_band_dag(n_nodes=20, n_edges=50, bandwidth=4, n_edges_per_node=None):
+def random_diagonal_band_dag(
+    n_nodes=20, n_edges=50, bandwidth=4, n_edges_per_node=None
+):
     """Return a random DAG with edges only between nodes that are at most band_size apart.
 
     Parameters
@@ -73,8 +75,8 @@ def random_diagonal_band_dag(n_nodes=20, n_edges=50, bandwidth=4, n_edges_per_no
 
     possible_edges = []
     for i in range(n_nodes):
-        for j in range(i+1, n_nodes):
-            if abs(i-j) <= bandwidth:
+        for j in range(i + 1, n_nodes):
+            if abs(i - j) <= bandwidth:
                 possible_edges.append((i, j))
     edges = np.random.choice(len(possible_edges), n_edges, replace=False)
     edges = [possible_edges[i] for i in edges]

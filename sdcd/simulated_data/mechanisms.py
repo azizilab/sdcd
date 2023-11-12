@@ -1,4 +1,4 @@
-from typing import Union, Optional, Callable
+from typing import Callable, Optional, Union
 
 import networkx as nx
 import torch

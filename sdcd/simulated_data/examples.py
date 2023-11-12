@@ -1,7 +1,7 @@
 import torch
 
-from sdcd.causal_model import CausalModel, scale_mechanism, MarginalDistribution
-from sdcd.simulated_data.graph import random_dag, chain_graph, random_diagonal_band_dag
+from sdcd.causal_model import CausalModel, MarginalDistribution, scale_mechanism
+from sdcd.simulated_data.graph import chain_graph, random_dag, random_diagonal_band_dag
 from sdcd.simulated_data.mechanisms import generate_gaussian_mlp_fixed_scale_mechanisms
 
 
