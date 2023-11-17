@@ -243,7 +243,6 @@ class SDCD(BaseModel):
 
         # Begin DAG training
         dag_penalty_flavor = self._stage2_kwargs["dag_penalty_flavor"]
-        print(dag_penalty_flavor)
         self._model = AutoEncoderLayers(
             self.d,
             [self._model_kwargs["dim_hidden"]] * self._model_kwargs["num_layers"],
