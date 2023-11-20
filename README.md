@@ -3,7 +3,7 @@
 SDCD is a method for inferring causal graphs from labeled interventional data.\
 You can read the associated preprint, ["Stable Differentiable Causal Discovery"](https://arxiv.org/abs/2311.10263), on arXiv.
 
-![sdcd-cartoon](https://github.com/azizilab/sdcd/assets/14086852/f1d29a7a-7835-401c-a06e-aabcf8c77ec6)
+![sdci-cartoon](https://github.com/azizilab/sdcd/assets/14086852/c2b34538-c5e0-48f2-b092-9167c02101a7)
 
 
 If you find this work useful, please consider citing our work:
