@@ -20,6 +20,8 @@ If you find this work useful, please consider citing our work:
 ---
 ## Quick Start
 
+You can install the package via `pip install sdcd`.
+
 For the main implementation of the method, see the [SDCD](sdcd/models/_sdcd.py) class.
 
 For a tutorial on the basic usage of SDCD, see [this notebook](tutorials/SDCD_basic_usage.ipynb).
